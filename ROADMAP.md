@@ -9,11 +9,11 @@
 ## v0.1.0-pre-alpha
 | Feature                                            | Status |
 | -------------------------------------------------- | ------ |
-| Integers and Floats                                |   🟡   |
+| Integers and Floats                                |   🔶   |
 | Booleans                                           |   ❌   |
-| Arithmetic ops (`+`, `-`, `*`, `/`, `%`)           |   🟡   |
+| Arithmetic ops (`+`, `-`, `*`, `/`, `%`)           |   🔶   |
 | Comparative ops (`==`, `!=`, `>`, `<`, `>=`, `<=`) |   ❌   |
-| Variables (`let`, `var`)                           |   🟡   |
+| Variables (`let`, `var`)                           |   🔶   |
 | Conditionals (`if`, `else`)                        |   ❌   |
 | Loops (`while`, `for`)                             |   ❌   |
 | Functions (`func`)                                 |   ❌   |
