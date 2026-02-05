@@ -6,6 +6,7 @@ mod operator;
 mod lexer;
 mod parser;
 mod semantics;
+mod pil;
 
 use cli::{Cli, EmitStage};
 
@@ -33,18 +34,27 @@ fn run_cli(cli: Cli) -> Result<(), String> {
 
     let tokens = lexer::tokenize(&path, &source)
         .map_err(|err| err.display(&line_starts, &lines))?;
-    if cli.emit == EmitStage::Lex {
+    if let Some(EmitStage::Lex) = cli.emit {
         eprintln!("{}: TOKENS: {tokens:#?}", "debug".bright_cyan().bold());
     }
 
-    let parse_tree = parser::parse(&path, &tokens)
+    let mut parse_tree = parser::parse(&path, &tokens)
         .map_err(|err| err.display(&line_starts, &lines))?;
 
     let comp_duration = start_time.elapsed().as_secs_f32();
     
-    if cli.emit == EmitStage::Ast {
+    if let Some(EmitStage::Ast) = cli.emit {
         eprintln!("\n{}: AST: {parse_tree:#?}", "debug".bright_cyan().bold());
     }
+
+    semantics::analyze(&path, &mut parse_tree)
+        .map_err(
+            |err|
+            err.iter()
+                .map(|d| d.display(&line_starts, &lines))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )?;
 
     println!("{} in {comp_duration:.2}s", "Compilation finished".bright_green().bold());
 

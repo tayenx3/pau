@@ -33,7 +33,7 @@ pub struct Cli {
     pub output: Option<String>,
 
     #[arg(short, long)]
-    pub emit: EmitStage,
+    pub emit: Option<EmitStage>,
 }
 
 impl Cli {

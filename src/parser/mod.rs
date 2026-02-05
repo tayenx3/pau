@@ -1,3 +1,5 @@
+//! # Syntactic Analysis/Parser
+
 pub mod ast;
 pub mod ty;
 
@@ -34,14 +36,14 @@ impl<'a> Parser<'a> {
             } else {
                 Err(Diagnostic {
                     path: self.path.clone(),
-                    primary_err: format!("Expected `{expected}`, found {tok}"),
+                    primary_err: format!("expected `{expected}`, found {tok}"),
                     primary_span: self.tokens.last().unwrap().span.splat_to_end(),
                     secondary_messages: Vec::new(),
                 })
             },
             None => return Err(Diagnostic {
                 path: self.path.clone(),
-                primary_err: format!("Expected `{expected}`, found end of input"),
+                primary_err: format!("expected `{expected}`, found end of input"),
                 primary_span: self.tokens.last().unwrap().span.splat_to_end(),
                 secondary_messages: Vec::new(),
             }),
@@ -57,14 +59,14 @@ impl<'a> Parser<'a> {
             Some(tok) => {
                 Err(Diagnostic {
                     path: self.path.clone(),
-                    primary_err: format!("Expected identifier, found {tok}"),
+                    primary_err: format!("expected identifier, found {tok}"),
                     primary_span: self.tokens.last().unwrap().span.splat_to_end(),
                     secondary_messages: Vec::new(),
                 })
             },
             None => return Err(Diagnostic {
                 path: self.path.clone(),
-                primary_err: format!("Expected identifier, found end of input"),
+                primary_err: format!("expected identifier, found end of input"),
                 primary_span: self.tokens.last().unwrap().span.splat_to_end(),
                 secondary_messages: Vec::new(),
             }),
@@ -133,7 +135,7 @@ impl<'a> Parser<'a> {
             Some(tok) => tok,
             None => return Err(Diagnostic {
                 path: self.path.clone(),
-                primary_err: "Expected expression, found end of input".to_string(),
+                primary_err: "expected expression, found end of input".to_string(),
                 primary_span: self.tokens.last().unwrap().span.splat_to_end(),
                 secondary_messages: Vec::new(),
             }),
@@ -184,7 +186,7 @@ impl<'a> Parser<'a> {
             TokenKind::Var => self.parse_decl(true),
             _ => Err(Diagnostic {
                 path: self.path.clone(),
-                primary_err: format!("Expected expression, found {}", tok),
+                primary_err: format!("expected expression, found {}", tok),
                 primary_span: tok.span,
                 secondary_messages: Vec::new(),
             }),
@@ -231,7 +233,7 @@ impl<'a> Parser<'a> {
             Some(tok) => tok,
             None => return Err(Diagnostic {
                 path: self.path.clone(),
-                primary_err: "Expected type, found end of input".to_string(),
+                primary_err: "expected type, found end of input".to_string(),
                 primary_span: self.tokens.last().unwrap().span.splat_to_end(),
                 secondary_messages: Vec::new(),
             }),
@@ -247,7 +249,7 @@ impl<'a> Parser<'a> {
             },
             _ => Err(Diagnostic {
                 path: self.path.clone(),
-                primary_err: format!("Expected expression, found {}", tok),
+                primary_err: format!("expected expression, found {}", tok),
                 primary_span: tok.span,
                 secondary_messages: Vec::new(),
             }),

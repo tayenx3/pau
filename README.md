@@ -1,25 +1,31 @@
 <div align="center">
-    <img src="icon-with-white-bg.png" width="400">
+    <img src="icon.png" width="400">
     <h1>Pau</h1>
     <img src="https://img.shields.io/badge/language-Rust-orange.svg" alt="Language: Rust"/>
 </div>
 
 > Context: i made 14 languages and they all failed, so i decided to make a more bland/simpler one
 
-Pau is a statically-typed, straightforward, experimental compiled programming language. Pau is **NOT** a systems language nor a production-ready language. it is simply an experimental language that's made to be deliberately simple.
+```go
+func main() = {
+    println("Hello, world!");
+}
+```
+
+Pau is a statically-typed, straightforward, experimental compiled programming language made in Rust. Pau is **NOT** a systems language nor a production-ready language. it is simply an experimental language that's made to be deliberately simple.
 
 ## Installing
 ```bash
 cargo install --git https://github.com/tayenx3/pau.git
 
 # confirm installation
-pau --version
+pauc --version
 ```
 (visit https://rustup.rs if you don't have Rust/`cargo` yet)
 
 ## How to compile using Pau
 ```bash
-pau main.pau -o main.exe
+pauc main.pau -o main.exe
 ./main.exe
 ```
 

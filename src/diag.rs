@@ -5,7 +5,7 @@ pub struct Diagnostic {
     pub path: String,
     pub primary_err: String,
     pub primary_span: Span,
-    pub secondary_messages: Vec<(Option<String>, Span)>,
+    pub secondary_messages: Vec<(Option<String>, Option<Span>)>,
 }
 
 pub fn determine_line(line_starts: &[usize], pos: usize) -> usize {
@@ -92,16 +92,17 @@ impl Diagnostic {
         create_src_ref(&mut output, digits_len, &self.path, start_line, start_col, end_line, end_col, lines);
 
         for (msg, span) in &self.secondary_messages {
-            let start_line = determine_line(&line_starts, span.start);
-            let start_col = span.start - line_starts[start_line];
-            
-            let end_line = determine_line(&line_starts, span.start);
-            let end_col = span.end - line_starts[end_line];
-
-            let digits_len = (end_line + 1).ilog10() + 1;
-
             if let Some(m) = msg { output.push_str(&format!("{m}\n")) }
-            create_src_ref_without_path(&mut output, digits_len, start_line, start_col, end_line, end_col, lines);
+            if let Some(span) = span {
+                let start_line = determine_line(&line_starts, span.start);
+                let start_col = span.start - line_starts[start_line];
+                
+                let end_line = determine_line(&line_starts, span.start);
+                let end_col = span.end - line_starts[end_line];
+
+                let digits_len = (end_line + 1).ilog10() + 1;
+                create_src_ref_without_path(&mut output, digits_len, start_line, start_col, end_line, end_col, lines);
+            }
         }
 
         output

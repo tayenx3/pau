@@ -1,3 +1,5 @@
+//! # Lexical Analysis/Lexer
+
 pub mod token;
 
 use token::{Token, TokenKind};
@@ -149,7 +151,7 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
             },
             _ => return Err(Diagnostic {
                 path: path.to_string(),
-                primary_err: format!("Unrecognized character: `{ch}`"),
+                primary_err: format!("unrecognized character: `{ch}`"),
                 primary_span: Span { start: pos, end: pos + 1 },
                 secondary_messages: Vec::new(),
             }),
