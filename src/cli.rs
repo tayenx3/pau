@@ -34,6 +34,9 @@ pub struct Cli {
 
     #[arg(short, long)]
     pub emit: Option<EmitStage>,
+
+    #[arg(short, long)]
+    pub verbose: bool,
 }
 
 impl Cli {

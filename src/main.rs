@@ -6,22 +6,22 @@ mod operator;
 mod lexer;
 mod parser;
 mod semantics;
-mod pil;
+mod middleend;
 
 use cli::{Cli, EmitStage};
+use colored::Colorize;
 
 fn main() {
     let cli = Cli::command();
 
     if let Err(err) = run_cli(cli) {
-        eprintln!("{err}");
+        eprintln!("pau::{err}");
     }
 }
 
 fn run_cli(cli: Cli) -> Result<(), String> {
     use std::fs;
     use std::time::Instant;
-    use colored::Colorize;
 
     let start_time = Instant::now();
 
@@ -56,7 +56,83 @@ fn run_cli(cli: Cli) -> Result<(), String> {
                 .join("\n")
         )?;
 
-    println!("{} in {comp_duration:.2}s", "Compilation finished".bright_green().bold());
+    let obj = middleend::generate_obj(&path, &parse_tree)?;
+
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::Path;
+
+    let obj_path = cli.output.clone()
+        .map(|path| format!("{}.o", Path::new(&path).file_stem().unwrap().display()))
+        .unwrap_or(format!("{}.o", Path::new(&path).file_stem().unwrap().display()));
+    let mut file = File::create(&obj_path)
+        .map_err(|err| format!("{}: {err}", "error".bright_red().bold()))?;
+    file.write_all(&obj)
+        .map_err(|err| format!("{}: {err}", "error".bright_red().bold()))?;
+
+    let output_exe = cli.output
+        .unwrap_or(format!("{}.exe", Path::new(&path).file_stem().unwrap().display()));
+
+    link(&obj_path, &output_exe)?;
+
+    fs::remove_file(obj_path)
+        .map_err(|err| format!("{}: {err}", "error".bright_red().bold()))?;
+
+    println!("{} in {comp_duration}s", "Compilation finished".bright_green().bold());
+
+    Ok(())
+}
+
+fn link(obj_path: &str, output_exe: &str) -> Result<(), String> {
+    use std::process::Command;
+
+    let linker_options = &[
+        ("lld-link", &[
+            &format!("/out:{output_exe}"),
+            "/subsystem:console",
+            "/entry:main",
+            "/nodefaultlib"
+        ] as &[&str]),
+        ("ld.lld", &[
+            &format!("-o {output_exe}"),
+            "--entry=main",
+            "-z nodefaultlib",
+        ]),
+        ("ld64.lld", &[
+            &format!("-o {output_exe}"),
+            "-e main",
+        ]),
+        ("link", &[
+            &format!("/out:{output_exe}"),
+            "/subsystem:console",
+            "/entry:main"
+        ]),
+    ];
+
+    let mut link_success = false;
+    for (linker_name, linker_args) in linker_options {
+        let output = Command::new(linker_name)
+            .arg(obj_path)
+            .args(*linker_args)
+            .output()
+            .map_err(|err| format!(
+                "{}: linker failed (used `{linker_name}`): {err}",
+                "error".bright_red().bold()
+            ))?;
+        
+         // if linker succeeded, stop
+        if output.status.success() {
+            link_success = true;
+            break
+        }
+    }
+
+    if !link_success {
+        return Err(format!("{}: no suitable linker found
+{}: please try manually linking `{obj_path}`",
+            "error".bright_red().bold(), "error".bright_red().bold()
+        ));
+    }
 
     Ok(())
 }
