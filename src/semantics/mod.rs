@@ -10,7 +10,7 @@ use crate::parser::ast::{Node, NodeKind};
 use crate::parser::ty::{ParseType, ParseTypeKind};
 use crate::span::Span;
 use colored::Colorize;
-use symbol::Symbol;
+use symbol::{Symbol, InitState};
 use ty::Type;
 
 use strsim::jaro_winkler;
@@ -28,16 +28,28 @@ struct SemanticAnalyzer {
 
 impl SemanticAnalyzer {
     fn new(path: &str) -> Self {
-        Self {
+        let mut s = Self {
             path: path.to_string(),
             scope: vec![Vec::new()],
             type_registry: HashMap::new(),
-        }
+        };
+
+        s.type_registry.insert("int".to_string(), Type::Int);
+        s.type_registry.insert("float".to_string(), Type::Float);
+
+        s
     }
 
-    fn define_identifier(&mut self, name: &str, ty: Type, mutability: bool, defined_at: Span) {
+    fn define_identifier(
+        &mut self,
+        name: &str,
+        ty: Type,
+        mutability: bool,
+        defined_at: Span,
+        init_state: InitState,
+    ) {
         self.scope.last_mut().unwrap().push(Symbol {
-            name: name.to_string(), ty, mutability, defined_at
+            name: name.to_string(), ty, mutability, defined_at, init_state
         });
     }
 
@@ -49,6 +61,35 @@ impl SemanticAnalyzer {
             for symbol in frame {
                 let score = jaro_winkler(name, &symbol.name);
                 if score == 1.0 {
+                    if symbol.init_state == InitState::Nope {
+                        return Err(Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("`{name}` is uninitialized"),
+                            primary_span: span,
+                            secondary_messages: vec![(
+                                Some(format!(
+                                    "{}: identifier defined here:",
+                                    "help".bright_blue().bold()
+                                )),
+                                Some(symbol.defined_at),
+                            )],
+                        });
+                    }
+                    if symbol.init_state == InitState::Maybe {
+                        return Err(Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("`{name}` may be uninitialized"),
+                            primary_span: span,
+                            secondary_messages: vec![(
+                                Some(format!(
+                                    "{}: identifier defined here:",
+                                    "help".bright_blue().bold()
+                                )),
+                                Some(symbol.defined_at),
+                            )],
+                        });
+                    }
+                    
                     return Ok(symbol);
                 }
 
@@ -89,6 +130,35 @@ impl SemanticAnalyzer {
             for symbol in frame {
                 let score = jaro_winkler(name, &symbol.name);
                 if score == 1.0 {
+                    if symbol.init_state == InitState::Nope {
+                        return Err(Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("`{name}` is uninitialized"),
+                            primary_span: span,
+                            secondary_messages: vec![(
+                                Some(format!(
+                                    "{}: identifier defined here:",
+                                    "help".bright_blue().bold()
+                                )),
+                                Some(symbol.defined_at),
+                            )],
+                        });
+                    }
+                    if symbol.init_state == InitState::Maybe {
+                        return Err(Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("`{name}` may be uninitialized"),
+                            primary_span: span,
+                            secondary_messages: vec![(
+                                Some(format!(
+                                    "{}: identifier defined here:",
+                                    "help".bright_blue().bold()
+                                )),
+                                Some(symbol.defined_at),
+                            )],
+                        });
+                    }
+
                     return Ok(symbol);
                 }
 
@@ -175,18 +245,27 @@ impl SemanticAnalyzer {
                     candidate_score = candidate_score.max(score);
                     candidate = Some(name);
                 }
-                Diagnostic {
-                    path: self.path.clone(),
-                    primary_err: format!("unknown identifier type `{n}`"),
-                    primary_span: ty.span,
-                    secondary_messages: vec![(
-                        Some(format!(
-                            "{}: did you mean `{}`?",
-                            "help".bright_blue().bold(),
-                            candidate.unwrap()
-                        )),
-                        None,
-                    )],
+                if candidate_score > 0.7 {
+                    Diagnostic {
+                        path: self.path.clone(),
+                        primary_err: format!("unknown identifier type `{n}`"),
+                        primary_span: ty.span,
+                        secondary_messages: vec![(
+                            Some(format!(
+                                "{}: did you mean `{}`?",
+                                "help".bright_blue().bold(),
+                                candidate.unwrap()
+                            )),
+                            None,
+                        )],
+                    }
+                } else {
+                    Diagnostic {
+                        path: self.path.clone(),
+                        primary_err: format!("unknown identifier type `{n}`"),
+                        primary_span: ty.span,
+                        secondary_messages: vec![],
+                    }
                 }
             }).cloned(),
         }
@@ -281,9 +360,14 @@ impl SemanticAnalyzer {
             NodeKind::Declaration {
                 name,
                 ty,
+                resolved_ty,
                 init,
                 mutability,
             } => {
+                let init_state = init.is_some()
+                    .then(|| InitState::Definitely)
+                    .unwrap_or(InitState::Nope);
+
                 let ty = match ty {
                     Some(ty) => self.resolve_type(ty)
                         .map_err(|err| vec![err])?,
@@ -316,7 +400,18 @@ impl SemanticAnalyzer {
                     Type::Unknown
                 };
 
-                self.define_identifier(name, final_ty, *mutability, node.span);
+                if final_ty == Type::Unknown {
+                    return Err(vec![Diagnostic {
+                        path: self.path.clone(),
+                        primary_err: "type must be defined at declaration".to_string(),
+                        primary_span: node.span,
+                        secondary_messages: Vec::new(),
+                    }]);
+                }
+
+                *resolved_ty = Some(final_ty.clone());
+
+                self.define_identifier(name, final_ty, *mutability, node.span, init_state);
 
                 Ok(init_ty)
             },

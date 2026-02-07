@@ -221,6 +221,7 @@ impl<'a> Parser<'a> {
             kind: NodeKind::Declaration {
                 name,
                 ty,
+                resolved_ty: None,
                 init,
                 mutability
             },

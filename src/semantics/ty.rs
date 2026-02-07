@@ -3,14 +3,20 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Int, Float, Unit,
-    
-    /// for a variable's type that is not defined or inferrable at declaration
     Unknown,
 }
 
 impl Type {
     pub fn is_numeric(&self) -> bool {
         matches!(self, Self::Int | Self::Float)
+    }
+
+    pub fn to_clif_ty(&self) -> cranelift::prelude::Type {
+        match self {
+            Self::Int | Self::Unit => cranelift::prelude::types::I64,
+            Self::Float => cranelift::prelude::types::F64,
+            _ => unreachable!("unresolved type")
+        }
     }
 }
 

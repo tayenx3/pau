@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use cranelift::prelude::*;
-use cranelift_codegen::{settings::{self, Flags}};
+use cranelift_codegen::{ir::StackSlot, settings::{self, Flags}};
 use cranelift_module::{default_libcall_names, Module, Linkage};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use colored::Colorize;
@@ -7,11 +9,11 @@ use crate::parser::ast::{Node, NodeKind};
 use crate::operator::Operator;
 use crate::semantics::ty as ptys;
 
-pub fn generate_obj(path: &str, ast: &[Node]) -> Result<Vec<u8>, String> {
+pub fn generate_obj(path: &str, ast: &[Node], emit_ir: bool) -> Result<Vec<u8>, String> {
     use std::path::Path;
 
     let module_name = Path::new(path).file_stem().unwrap().display().to_string();
-    IRGenerator::new(module_name)?.generate(ast)
+    IRGenerator::new(module_name)?.generate(ast, emit_ir)
 }
 
 fn seman_err() -> ! {
@@ -20,12 +22,14 @@ fn seman_err() -> ! {
 
 struct IRGenerator {
     module: ObjectModule,
+    unit: Option<Value>,
+    scope: Vec<HashMap<String, (StackSlot, Type)>>,
 }
 
 impl IRGenerator {
     fn new(module_name: String) -> Result<Self, String> {
         let mut builder = settings::builder();
-        builder.set("opt_level", "speed")
+        builder.set("opt_level", "speed_and_size")
             .map_err(|err|
                 format!("{}: cranelift error: {err}", "error".bright_red().bold())
             )?;
@@ -46,11 +50,21 @@ impl IRGenerator {
         let module = ObjectModule::new(builder);
 
         Ok(Self {
-            module
+            module,
+            unit: None,
+            scope: vec![HashMap::new()]
         })
     }
 
-    fn generate(mut self, ast: &[Node]) -> Result<Vec<u8>, String> {
+    fn cache_unit(&mut self, builder: &mut FunctionBuilder) -> Value {
+        if self.unit.is_none() {
+            self.unit = Some(builder.ins().iconst(types::I64, 0));
+        }
+
+        self.unit.unwrap()
+    }
+
+    fn generate(mut self, ast: &[Node], emit_ir: bool) -> Result<Vec<u8>, String> {
         let mut sig = self.module.make_signature();
         sig.returns.push(AbiParam::new(types::I64));
 
@@ -70,10 +84,19 @@ impl IRGenerator {
         builder.switch_to_block(block);
         builder.seal_block(block);
 
-        let zero = builder.ins().iconst(types::I64, 1);
-        builder.ins().return_(&[zero]);
+        let mut result = self.cache_unit(&mut builder);
+        for node in ast {
+            result = self.generate_node(node, &mut builder);
+        }
+        builder.ins().return_(&[result]);
 
         builder.finalize();
+
+        if emit_ir {
+            use colored::Colorize;
+
+            println!("{}: IR:\n{:?}", "debug".bright_cyan().bold(), ctx.func);
+        }
 
         self.module.define_function(func_id, &mut ctx).unwrap();
         self.module.clear_context(&mut ctx);
@@ -87,49 +110,112 @@ impl IRGenerator {
         Ok(bytes)
     }
 
-    fn generate_node(&mut self, node: &Node, builder: &mut FunctionBuilder) -> Result<Value, String> {
+    fn find_var(&self, name: &str) -> (StackSlot, Type) {
+        for s in self.scope.iter().rev() {
+            if s.contains_key(name) {
+                return s[name]
+            }
+        }
+
+        seman_err()
+    }
+
+    fn generate_node(&mut self, node: &Node, builder: &mut FunctionBuilder) -> Value {
         match &node.kind {
-            NodeKind::Integer(n) => Ok(builder.ins().iconst(types::I64, *n)),
-            NodeKind::Float(n) => Ok(builder.ins().f64const(*n)),
+            NodeKind::Integer(n) => builder.ins().iconst(types::I64, *n),
+            NodeKind::Float(n) => builder.ins().f64const(*n),
+            NodeKind::Identifier(n) => {
+                let (slot, ty) = self.find_var(n);
+                builder.ins().stack_load(ty, slot, 0)
+            },
+            NodeKind::Semi(stmt) => {
+                self.generate_node(stmt, builder);
+                self.cache_unit(builder)
+            },
             NodeKind::BinaryOp {
                 op,
                 lhs,
                 rhs,
                 ty_cache,
             } => {
-                let lval = self.generate_node(lhs, builder)?;
-                let rval = self.generate_node(rhs, builder)?;
+                let lval = self.generate_node(lhs, builder);
+                let rval = self.generate_node(rhs, builder);
 
                 match op {
                     Operator::Plus => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ptys::Type::Int => Ok(builder.ins().iadd(lval, rval)),
-                        ptys::Type::Float => Ok(builder.ins().fadd(lval, rval)),
+                        ptys::Type::Int => builder.ins().iadd(lval, rval),
+                        ptys::Type::Float => builder.ins().fadd(lval, rval),
                         _ => seman_err(),
                     },
                     Operator::Minus => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ptys::Type::Int => Ok(builder.ins().isub(lval, rval)),
-                        ptys::Type::Float => Ok(builder.ins().fsub(lval, rval)),
+                        ptys::Type::Int => builder.ins().isub(lval, rval),
+                        ptys::Type::Float => builder.ins().fsub(lval, rval),
                         _ => seman_err(),
                     },
                     Operator::Star => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ptys::Type::Int => Ok(builder.ins().imul(lval, rval)),
-                        ptys::Type::Float => Ok(builder.ins().fmul(lval, rval)),
+                        ptys::Type::Int => builder.ins().imul(lval, rval),
+                        ptys::Type::Float => builder.ins().fmul(lval, rval),
                         _ => seman_err(),
                     },
                     Operator::Slash => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ptys::Type::Int => Ok(builder.ins().sdiv(lval, rval)),
-                        ptys::Type::Float => Ok(builder.ins().fdiv(lval, rval)),
+                        ptys::Type::Int => builder.ins().sdiv(lval, rval),
+                        ptys::Type::Float => builder.ins().fdiv(lval, rval),
                         _ => seman_err(),
                     },
                     Operator::Modulo => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ptys::Type::Int => Ok(builder.ins().srem(lval, rval)),
-                        ptys::Type::Float => Ok(frem(lval, rval, builder)),
+                        ptys::Type::Int => builder.ins().srem(lval, rval),
+                        ptys::Type::Float => frem(lval, rval, builder),
                         _ => seman_err(),
                     },
                     Operator::Walrus => seman_err(),
                 }
             },
-            _ => todo!("{node:#?}"),
+            NodeKind::UnaryOp {
+                op,
+                operand,
+                ty_cache,
+            } => {
+                let oval = self.generate_node(operand, builder);
+
+                match op {
+                    Operator::Plus => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                        ptys::Type::Int | ptys::Type::Float => oval,
+                        _ => seman_err(),
+                    },
+                    Operator::Minus => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                        ptys::Type::Int => builder.ins().ineg(oval),
+                        ptys::Type::Float => builder.ins().fneg(oval),
+                        _ => seman_err(),
+                    },
+                    _ => seman_err(),
+                }
+            },
+            NodeKind::Declaration {
+                name,
+                ty: _,
+                resolved_ty,
+                init,
+                mutability: _,
+            } => {
+                let ss = builder.create_sized_stack_slot(StackSlotData {
+                    kind: StackSlotKind::ExplicitSlot,
+                    size: 8,
+                    align_shift: 8,
+                    key: None,
+                });
+                let init = init.as_ref()
+                    .map(|expr| self.generate_node(expr, builder))
+                    .unwrap_or(self.cache_unit(builder));
+                builder.ins().stack_store(init, ss, 0);
+
+                let ty = resolved_ty.as_ref()
+                    .unwrap_or_else(|| seman_err())
+                    .to_clif_ty();
+
+                self.scope.last_mut().unwrap().insert(name.clone(), (ss, ty));
+
+                init
+            },
         }
     }
 }

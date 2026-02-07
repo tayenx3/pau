@@ -21,6 +21,7 @@ pub enum NodeKind {
     Declaration {
         name: String,
         ty: Option<ParseType>,
+        resolved_ty: Option<Type>,
         init: Option<Box<Node>>,
         mutability: bool,
     },

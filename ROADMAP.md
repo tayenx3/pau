@@ -1,19 +1,18 @@
 # Pau Roadmap
 
 ## Legend
-- ✅: Fully implemented (frontend - middle-end - backend supported)
-- 🟡: Passed through frontend and middle-end
-- 🔶: Passed through frontend
+- ✅: Fully implemented
+- 🟡: Partially implemented
 - ❌: Fully unimplemented
 
 ## v0.1.0-pre-alpha
 | Feature                                            | Status |
 | -------------------------------------------------- | ------ |
-| Integers and Floats                                |   🔶   |
+| Integers and Floats                                |   ✅   |
 | Booleans                                           |   ❌   |
-| Arithmetic ops (`+`, `-`, `*`, `/`, `%`)           |   🔶   |
+| Arithmetic ops (`+`, `-`, `*`, `/`, `%`)           |   ✅   |
 | Comparative ops (`==`, `!=`, `>`, `<`, `>=`, `<=`) |   ❌   |
-| Variables (`let`, `var`)                           |   🔶   |
+| Variables (`let`, `var`)                           |   ✅   |
 | Conditionals (`if`, `else`)                        |   ❌   |
 | Loops (`while`, `for`)                             |   ❌   |
 | Functions (`func`)                                 |   ❌   |

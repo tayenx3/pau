@@ -1,23 +1,4 @@
-use std::str::FromStr;
-
 use clap::Parser;
-
-#[derive(Debug, Parser, Clone, PartialEq)]
-pub enum EmitStage {
-    Lex, Ast,
-}
-
-impl FromStr for EmitStage {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "lex" | "tokens" => Ok(Self::Lex),
-            "ast" | "parse-tree" => Ok(Self::Ast),
-            _ => Err(format!("Unknown emit stage: `{s}`"))
-        }
-    }
-}
 
 #[derive(Debug, Parser, Clone)]
 #[command(
@@ -33,10 +14,17 @@ pub struct Cli {
     pub output: Option<String>,
 
     #[arg(short, long)]
-    pub emit: Option<EmitStage>,
+    pub verbose: bool,
 
     #[arg(short, long)]
-    pub verbose: bool,
+    pub keep_object_file: bool,
+
+    #[arg(short = 't', long)]
+    pub emit_tokens: bool,
+    #[arg(short = 'p', long)]
+    pub emit_parse_tree: bool,
+    #[arg(short = 'i', long)]
+    pub emit_ir: bool,
 }
 
 impl Cli {
