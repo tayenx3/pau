@@ -1,3 +1,5 @@
-let x: i32 = 10i32;
+let m = 100;
+let c = 299792458;
+let e = m * c * c;
 
-x + 6u8
+e

@@ -35,6 +35,7 @@ impl SemanticAnalyzer {
         };
 
         s.type_registry.insert("int".to_string(), Type::Int);
+        s.type_registry.insert("uint".to_string(), Type::UInt);
         s.type_registry.insert("float".to_string(), Type::Float);
         s.type_registry.insert("i8".to_string(), Type::I8);
         s.type_registry.insert("i16".to_string(), Type::I16);
@@ -300,6 +301,7 @@ impl SemanticAnalyzer {
     fn analyze_node(&mut self, node: &mut Node) -> Result<Type, Vec<Diagnostic>> {
         match &mut node.kind {
             NodeKind::Integer(_) => Ok(Type::Int),
+            NodeKind::UnsignedInt(_) => Ok(Type::UInt),
             NodeKind::Float(_) => Ok(Type::Float),
             NodeKind::I8(_) => Ok(Type::I8),
             NodeKind::I16(_) => Ok(Type::I16),

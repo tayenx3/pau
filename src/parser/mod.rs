@@ -149,6 +149,13 @@ impl<'a> Parser<'a> {
                     span: tok.span,
                 })
             },
+            TokenKind::UnsignedInt(n) => {
+                self.pos += 1;
+                Ok(Node {
+                    kind: NodeKind::UnsignedInt(*n),
+                    span: tok.span,
+                })
+            },
             TokenKind::Float(n) => {
                 self.pos += 1;
                 Ok(Node {

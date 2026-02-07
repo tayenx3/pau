@@ -3,7 +3,7 @@ use cranelift::prelude::types;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-    Int, Float,
+    Int, UInt, Float,
     I8, I16, I32, I64,
     U8, U16, U32, U64,
     F32, F64,
@@ -12,12 +12,34 @@ pub enum Type {
 
 impl Type {
     pub fn is_numeric(&self) -> bool {
-        matches!(self, Self::Int | Self::Float)
+        matches!(
+            self,
+            Self::Int | Self::Float | Self::UInt | Self::I8
+            | Self::I16 | Self::I32 | Self::I64 | Self::U8
+            | Self::U16 | Self::U32 | Self::U64 | Self::F32
+            | Self::F64
+        )
+    }
+
+    pub fn is_int(&self) -> bool {
+        matches!(
+            self,
+            Self::Int | Self::UInt | Self::I8 | Self::I16
+            | Self::I32 | Self::I64 | Self::U8 | Self::U16
+            | Self::U32 | Self::U64
+        )
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(
+            self,
+            Self::Float | Self::F32 | Self::F64
+        )
     }
 
     pub fn to_clif_ty(&self) -> cranelift::prelude::Type {
         match self {
-            Self::Int => match size_of::<usize>() {
+            Self::Int | Self::UInt => match size_of::<usize>() {
                 4 => types::I32,
                 8 => types::I64,
                 _ => unreachable!()
@@ -38,7 +60,7 @@ impl Type {
 
     pub fn size(&self) -> u32 {
         match self {
-            Self::Int | Self::Float => size_of::<usize>() as u32,
+            Self::Int | Self::UInt | Self::Float => size_of::<usize>() as u32,
             Self::I8 | Self::U8 | Self::Unit => 1,
             Self::I16 | Self::U16 => 2,
             Self::I32 | Self::U32 | Self::F32 => 4,
@@ -58,6 +80,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Int => write!(f, "int"),
+            Self::UInt => write!(f, "uint"),
             Self::Float => write!(f, "float"),
             Self::I8 => write!(f, "i8"),
             Self::I16 => write!(f, "i16"),

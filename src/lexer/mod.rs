@@ -101,14 +101,75 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                             let t = ch;
 
                             end = pos;
+
+                            if chars.len() == 1 {
+                                chars.pop();
+                                
+                                tokens.push(Token {
+                                    kind: match t {
+                                        'i' => {
+                                            let result  = acc.parse().map_err(|_| Diagnostic {
+                                                path: path.to_string(),
+                                                primary_err: format!("literal `{acc}` doesn't fit in `int`"),
+                                                primary_span: Span { start: pos, end },
+                                                secondary_messages: Vec::new(),
+                                            })?;
+                                            TokenKind::Integer(result)
+                                        },
+                                        'u' => {
+                                            let result  = acc.parse().map_err(|_| Diagnostic {
+                                                path: path.to_string(),
+                                                primary_err: format!("literal `{acc}` doesn't fit in `uint`"),
+                                                primary_span: Span { start: pos, end },
+                                                secondary_messages: Vec::new(),
+                                            })?;
+                                            TokenKind::UnsignedInt(result)
+                                        },
+                                        _ => unreachable!(),
+                                    },
+                                    lexeme: format!("{}{t}", acc),
+                                    span: Span { start: pos, end: end + 1 },
+                                });
+                                continue 'lex_loop;
+                            }
+
                             if chars.len() >= 2 {
+                                if !chars[chars.len()-2].1.is_alphanumeric() {
+                                    chars.pop();
+                                    
+                                    tokens.push(Token {
+                                        kind: match t {
+                                            'i' => {
+                                                let result  = acc.parse().map_err(|_| Diagnostic {
+                                                    path: path.to_string(),
+                                                    primary_err: format!("literal `{acc}` doesn't fit in `int`"),
+                                                    primary_span: Span { start: pos, end },
+                                                    secondary_messages: Vec::new(),
+                                                })?;
+                                                TokenKind::Integer(result)
+                                            },
+                                            'u' => {
+                                                let result  = acc.parse().map_err(|_| Diagnostic {
+                                                    path: path.to_string(),
+                                                    primary_err: format!("literal `{acc}` doesn't fit in `uint`"),
+                                                    primary_span: Span { start: pos, end },
+                                                    secondary_messages: Vec::new(),
+                                                })?;
+                                                TokenKind::UnsignedInt(result)
+                                            },
+                                            _ => unreachable!(),
+                                        },
+                                        lexeme: format!("{}{t}", acc),
+                                        span: Span { start: pos, end: end + 1 },
+                                    });
+                                    continue 'lex_loop;
+                                }
+
                                 let l = match chars.len().checked_sub(3) {
                                     Some(n) => chars.get(n).map(|x| !x.1.is_alphanumeric()).unwrap(),
                                     None => true,
                                 };
-                                if Some('8') == chars.get(chars.len()-2).map(|x| x.1)
-                                    && l
-                                {
+                                if chars[chars.len()-2].1 == '8' && l {
                                     chars.pop();
                                     chars.pop();
                                     if acc.parse::<i64>().unwrap() > (t == 'i').then(|| i8::MAX as i64).unwrap_or(u8::MAX as i64) {
@@ -121,8 +182,24 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                                     }
                                     tokens.push(Token {
                                         kind: match t {
-                                            'i' => TokenKind::I8(acc.parse().unwrap()),
-                                            'u' => TokenKind::U8(acc.parse().unwrap()),
+                                            'i' => {
+                                                let result  = acc.parse().map_err(|_| Diagnostic {
+                                                    path: path.to_string(),
+                                                    primary_err: format!("literal `{acc}` doesn't fit in `i8`"),
+                                                    primary_span: Span { start: pos, end },
+                                                    secondary_messages: Vec::new(),
+                                                })?;
+                                                TokenKind::I8(result)
+                                            },
+                                            'u' => {
+                                                let result  = acc.parse().map_err(|_| Diagnostic {
+                                                    path: path.to_string(),
+                                                    primary_err: format!("literal `{acc}` doesn't fit in `u8`"),
+                                                    primary_span: Span { start: pos, end },
+                                                    secondary_messages: Vec::new(),
+                                                })?;
+                                                TokenKind::U8(result)
+                                            },
                                             _ => unreachable!(),
                                         },
                                         lexeme: format!("{}{t}8", acc),
@@ -141,72 +218,96 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                                     break
                                 }
 
-                                if Some('1') == chars.get(chars.len()-2).map(|x| x.1)
-                                    && Some('6') == chars.get(chars.len()-3).map(|x| x.1)
-                                {
+                                if chars[chars.len()-2].1 == '1' && chars[chars.len()-3].1 == '6' {
                                     chars.pop();
                                     chars.pop();
                                     chars.pop();
-                                    if acc.parse::<i64>().unwrap() > i16::MAX as i64 {
-                                        return Err(Diagnostic {
-                                            path: path.to_string(),
-                                            primary_err: format!("literal `{acc}` doesn't fit in i16"),
-                                            primary_span: Span { start: pos, end },
-                                            secondary_messages: Vec::new(),
-                                        });
-                                    }
                                     tokens.push(Token {
                                         kind: match t {
-                                            'i' => TokenKind::I16(acc.parse().unwrap()),
-                                            'u' => TokenKind::U16(acc.parse().unwrap()),
+                                            'i' => {
+                                                let result  = acc.parse().map_err(|_| Diagnostic {
+                                                    path: path.to_string(),
+                                                    primary_err: format!("literal `{acc}` doesn't fit in `i16`"),
+                                                    primary_span: Span { start: pos, end },
+                                                    secondary_messages: Vec::new(),
+                                                })?;
+                                                TokenKind::I16(result)
+                                            },
+                                            'u' => {
+                                                let result  = acc.parse().map_err(|_| Diagnostic {
+                                                    path: path.to_string(),
+                                                    primary_err: format!("literal `{acc}` doesn't fit in `u16`"),
+                                                    primary_span: Span { start: pos, end },
+                                                    secondary_messages: Vec::new(),
+                                                })?;
+                                                TokenKind::U16(result)
+                                            },
                                             _ => unreachable!(),
                                         },
                                         lexeme: format!("{}{t}16", acc),
                                         span: Span { start: pos, end },
                                     });
                                     continue 'lex_loop;
-                                } else if Some('3') == chars.get(chars.len()-2).map(|x| x.1)
-                                    && Some('2') == chars.get(chars.len()-3).map(|x| x.1)
-                                {
+                                } else if chars[chars.len()-2].1 == '3' && chars[chars.len()-3].1 == '2' {
                                     chars.pop();
                                     chars.pop();
                                     chars.pop();
-                                    if acc.parse::<i64>().unwrap() > i32::MAX as i64 {
-                                        return Err(Diagnostic {
-                                            path: path.to_string(),
-                                            primary_err: format!("literal `{acc}` doesn't fit in i32"),
-                                            primary_span: Span { start: pos, end },
-                                            secondary_messages: Vec::new(),
-                                        });
-                                    }
                                     tokens.push(Token {
                                         kind: match t {
-                                            'i' => TokenKind::I32(acc.parse().unwrap()),
-                                            'u' => TokenKind::U32(acc.parse().unwrap()),
+                                            'i' => {
+                                                let result  = acc.parse().map_err(|_| Diagnostic {
+                                                    path: path.to_string(),
+                                                    primary_err: format!("literal `{acc}` doesn't fit in `i32`"),
+                                                    primary_span: Span { start: pos, end },
+                                                    secondary_messages: Vec::new(),
+                                                })?;
+                                                TokenKind::I32(result)
+                                            },
+                                            'u' => {
+                                                let result  = acc.parse().map_err(|_| Diagnostic {
+                                                    path: path.to_string(),
+                                                    primary_err: format!("literal `{acc}` doesn't fit in `u32`"),
+                                                    primary_span: Span { start: pos, end },
+                                                    secondary_messages: Vec::new(),
+                                                })?;
+                                                TokenKind::U32(result)
+                                            },
                                             _ => unreachable!(),
                                         },
                                         lexeme: format!("{}{t}32", acc),
                                         span: Span { start: pos, end },
                                     });
                                     continue 'lex_loop;
-                                } else if Some('6') == chars.get(chars.len()-2).map(|x| x.1)
-                                    && Some('4') == chars.get(chars.len()-3).map(|x| x.1)
-                                {
+                                } else if chars[chars.len()-2].1 == '6' && chars[chars.len()-3].1 == '4' {
                                     chars.pop();
                                     chars.pop();
                                     chars.pop();
                                     tokens.push(Token {
                                         kind: match t {
-                                            'i' => TokenKind::I64(acc.parse().unwrap()),
-                                            'u' => TokenKind::U64(acc.parse().unwrap()),
+                                            'i' => {
+                                                let result  = acc.parse().map_err(|_| Diagnostic {
+                                                    path: path.to_string(),
+                                                    primary_err: format!("literal `{acc}` doesn't fit in `i64`"),
+                                                    primary_span: Span { start: pos, end },
+                                                    secondary_messages: Vec::new(),
+                                                })?;
+                                                TokenKind::I64(result)
+                                            },
+                                            'u' => {
+                                                let result  = acc.parse().map_err(|_| Diagnostic {
+                                                    path: path.to_string(),
+                                                    primary_err: format!("literal `{acc}` doesn't fit in `u64`"),
+                                                    primary_span: Span { start: pos, end },
+                                                    secondary_messages: Vec::new(),
+                                                })?;
+                                                TokenKind::U64(result)
+                                            },
                                             _ => unreachable!(),
                                         },
                                         lexeme: format!("{}{t}64", acc),
                                         span: Span { start: pos, end },
                                     });
                                     continue 'lex_loop;
-                                } else {
-                                    break
                                 }
                             }
                         },
@@ -262,8 +363,14 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                         span: Span { start: pos, end },
                     });
                 } else {
+                    let result = acc.parse().map_err(|_| Diagnostic {
+                        path: path.to_string(),
+                        primary_err: format!("literal `{acc}` doesn't fit in `int`"),
+                        primary_span: Span { start: pos, end },
+                        secondary_messages: Vec::new(),
+                    })?;
                     tokens.push(Token {
-                        kind: TokenKind::Integer(acc.parse().unwrap()),
+                        kind: TokenKind::Integer(result),
                         lexeme: acc,
                         span: Span { start: pos, end },
                     });

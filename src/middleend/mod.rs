@@ -7,7 +7,6 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 use colored::Colorize;
 use crate::parser::ast::{Node, NodeKind};
 use crate::operator::Operator;
-use crate::semantics::ty as ptys;
 
 pub fn generate_obj(path: &str, ast: &[Node], emit_ir: bool) -> Result<Vec<u8>, String> {
     use std::path::Path;
@@ -126,7 +125,12 @@ impl IRGenerator {
                 4 => types::I32,
                 8 => types::I64,
                 _ => unreachable!()
-            }, *n),
+            }, *n as i64),
+            NodeKind::UnsignedInt(n) => builder.ins().iconst(match size_of::<usize>() {
+                4 => types::I32,
+                8 => types::I64,
+                _ => unreachable!()
+            }, *n as i64),
             NodeKind::Float(n) => match size_of::<usize>() {
                 4 => builder.ins().f32const(*n as f32),
                 8 => builder.ins().f64const(*n),
@@ -161,28 +165,28 @@ impl IRGenerator {
 
                 match op {
                     Operator::Plus => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ptys::Type::Int => builder.ins().iadd(lval, rval),
-                        ptys::Type::Float => builder.ins().fadd(lval, rval),
+                        ty if ty.is_int() => builder.ins().iadd(lval, rval),
+                        ty if ty.is_float() => builder.ins().fadd(lval, rval),
                         _ => seman_err(),
                     },
                     Operator::Minus => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ptys::Type::Int => builder.ins().isub(lval, rval),
-                        ptys::Type::Float => builder.ins().fsub(lval, rval),
+                        ty if ty.is_int() => builder.ins().isub(lval, rval),
+                        ty if ty.is_float() => builder.ins().fsub(lval, rval),
                         _ => seman_err(),
                     },
                     Operator::Star => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ptys::Type::Int => builder.ins().imul(lval, rval),
-                        ptys::Type::Float => builder.ins().fmul(lval, rval),
+                        ty if ty.is_int() => builder.ins().imul(lval, rval),
+                        ty if ty.is_float() => builder.ins().fmul(lval, rval),
                         _ => seman_err(),
                     },
                     Operator::Slash => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ptys::Type::Int => builder.ins().sdiv(lval, rval),
-                        ptys::Type::Float => builder.ins().fdiv(lval, rval),
+                        ty if ty.is_int() => builder.ins().sdiv(lval, rval),
+                        ty if ty.is_float() => builder.ins().fdiv(lval, rval),
                         _ => seman_err(),
                     },
                     Operator::Modulo => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ptys::Type::Int => builder.ins().srem(lval, rval),
-                        ptys::Type::Float => frem(lval, rval, builder),
+                        ty if ty.is_int() => builder.ins().srem(lval, rval),
+                        ty if ty.is_float() => frem(lval, rval, builder),
                         _ => seman_err(),
                     },
                     Operator::Walrus => seman_err(),
@@ -197,12 +201,13 @@ impl IRGenerator {
 
                 match op {
                     Operator::Plus => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ptys::Type::Int | ptys::Type::Float => oval,
+                        ty if ty.is_int() => oval,
+                        ty if ty.is_float() => oval,
                         _ => seman_err(),
                     },
                     Operator::Minus => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ptys::Type::Int => builder.ins().ineg(oval),
-                        ptys::Type::Float => builder.ins().fneg(oval),
+                        ty if ty.is_int() => builder.ins().ineg(oval),
+                        ty if ty.is_float() => builder.ins().fneg(oval),
                         _ => seman_err(),
                     },
                     _ => seman_err(),
