@@ -1,9 +1,13 @@
 use std::fmt;
+use cranelift::prelude::types;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-    Int, Float, Unit,
-    Unknown,
+    Int, Float,
+    I8, I16, I32, I64,
+    U8, U16, U32, U64,
+    F32, F64,
+    Unit,
 }
 
 impl Type {
@@ -13,9 +17,39 @@ impl Type {
 
     pub fn to_clif_ty(&self) -> cranelift::prelude::Type {
         match self {
-            Self::Int | Self::Unit => cranelift::prelude::types::I64,
-            Self::Float => cranelift::prelude::types::F64,
-            _ => unreachable!("unresolved type")
+            Self::Int => match size_of::<usize>() {
+                4 => types::I32,
+                8 => types::I64,
+                _ => unreachable!()
+            },
+            Self::Float => match size_of::<usize>() {
+                4 => types::F32,
+                8 => types::F64,
+                _ => unreachable!()
+            },
+            Self::I8 | Self::U8 | Self::Unit => types::I8,
+            Self::I16 | Self::U16 => types::I16,
+            Self::I32 | Self::U32 => types::I32,
+            Self::I64 | Self::U64 => types::I64,
+            Self::F32 => types::F32,
+            Self::F64 => types::F64,
+        }
+    }
+
+    pub fn size(&self) -> u32 {
+        match self {
+            Self::Int | Self::Float => size_of::<usize>() as u32,
+            Self::I8 | Self::U8 | Self::Unit => 1,
+            Self::I16 | Self::U16 => 2,
+            Self::I32 | Self::U32 | Self::F32 => 4,
+            Self::I64 | Self::U64 | Self::F64 => 8,
+        }
+    }
+
+    pub fn align(&self) -> u8 {
+        // specially aligned types will be made later
+        match self {
+            _ => self.size() as u8,
         }
     }
 }
@@ -25,8 +59,17 @@ impl fmt::Display for Type {
         match self {
             Self::Int => write!(f, "int"),
             Self::Float => write!(f, "float"),
+            Self::I8 => write!(f, "i8"),
+            Self::I16 => write!(f, "i16"),
+            Self::I32 => write!(f, "i32"),
+            Self::I64 => write!(f, "i64"),
+            Self::U8 => write!(f, "u8"),
+            Self::U16 => write!(f, "u16"),
+            Self::U32 => write!(f, "u32"),
+            Self::U64 => write!(f, "u64"),
+            Self::F32 => write!(f, "f32"),
+            Self::F64 => write!(f, "f64"),
             Self::Unit => write!(f, "()"),
-            Self::Unknown => write!(f, "<unknown>"),
         }
     }
 }

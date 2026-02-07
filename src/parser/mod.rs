@@ -163,6 +163,76 @@ impl<'a> Parser<'a> {
                     span: tok.span,
                 })
             },
+            TokenKind::I8(n) => {
+                self.pos += 1;
+                Ok(Node {
+                    kind: NodeKind::I8(*n),
+                    span: tok.span,
+                })
+            },
+            TokenKind::I16(n) => {
+                self.pos += 1;
+                Ok(Node {
+                    kind: NodeKind::I16(*n),
+                    span: tok.span,
+                })
+            },
+            TokenKind::I32(n) => {
+                self.pos+= 1;
+                Ok(Node {
+                    kind: NodeKind::I32(*n),
+                    span: tok.span,
+                })
+            },
+            TokenKind::I64(n) => {
+                self.pos += 1;
+                Ok(Node {
+                    kind: NodeKind::I64(*n),
+                    span: tok.span,
+                })
+            },
+            TokenKind::U8(n) => {
+                self.pos += 1;
+                Ok(Node {
+                    kind: NodeKind::U8(*n),
+                    span: tok.span,
+                })
+            },
+            TokenKind::U16(n) => {
+                self.pos += 1;
+                Ok(Node {
+                    kind: NodeKind::U16(*n),
+                    span: tok.span,
+                })
+            },
+            TokenKind::U32(n) => {
+                self.pos+= 1;
+                Ok(Node {
+                    kind: NodeKind::U32(*n),
+                    span: tok.span,
+                })
+            },
+            TokenKind::U64(n) => {
+                self.pos += 1;
+                Ok(Node {
+                    kind: NodeKind::U64(*n),
+                    span: tok.span,
+                })
+            },
+            TokenKind::F32(n) => {
+                self.pos+= 1;
+                Ok(Node {
+                    kind: NodeKind::F32(*n),
+                    span: tok.span,
+                })
+            },
+            TokenKind::F64(n) => {
+                self.pos += 1;
+                Ok(Node {
+                    kind: NodeKind::F64(*n),
+                    span: tok.span,
+                })
+            },
             TokenKind::Operator(op) if op.is_prefix() => {
                 self.pos += 1;
                 let inner = self.parse_primary()?;

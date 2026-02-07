@@ -36,6 +36,16 @@ impl SemanticAnalyzer {
 
         s.type_registry.insert("int".to_string(), Type::Int);
         s.type_registry.insert("float".to_string(), Type::Float);
+        s.type_registry.insert("i8".to_string(), Type::I8);
+        s.type_registry.insert("i16".to_string(), Type::I16);
+        s.type_registry.insert("i32".to_string(), Type::I32);
+        s.type_registry.insert("i64".to_string(), Type::I64);
+        s.type_registry.insert("u8".to_string(), Type::U8);
+        s.type_registry.insert("u16".to_string(), Type::U16);
+        s.type_registry.insert("u32".to_string(), Type::U32);
+        s.type_registry.insert("u64".to_string(), Type::U64);
+        s.type_registry.insert("f32".to_string(), Type::F32);
+        s.type_registry.insert("f64".to_string(), Type::F64);
 
         s
     }
@@ -196,7 +206,7 @@ impl SemanticAnalyzer {
 
         let symbol = self.find_identifier_mut(name, span)?;
 
-        if !symbol.mutability && symbol.ty != Type::Unknown {
+        if !symbol.mutability {
             return Err(Diagnostic {
                 path,
                 primary_err: format!("identifier `{name}` is immutable"),
@@ -211,9 +221,7 @@ impl SemanticAnalyzer {
             });
         }
 
-        if symbol.ty == Type::Unknown {
-            symbol.ty = val_ty;
-        } else if symbol.ty != val_ty {
+        if symbol.ty != val_ty {
             return Err(Diagnostic {
                 path,
                 primary_err: format!(
@@ -230,6 +238,8 @@ impl SemanticAnalyzer {
                 )],
             });
         }
+
+        symbol.ty = val_ty;
 
         Ok(())
     }
@@ -291,6 +301,16 @@ impl SemanticAnalyzer {
         match &mut node.kind {
             NodeKind::Integer(_) => Ok(Type::Int),
             NodeKind::Float(_) => Ok(Type::Float),
+            NodeKind::I8(_) => Ok(Type::I8),
+            NodeKind::I16(_) => Ok(Type::I16),
+            NodeKind::I32(_) => Ok(Type::I32),
+            NodeKind::I64(_) => Ok(Type::I64),
+            NodeKind::U8(_) => Ok(Type::U8),
+            NodeKind::U16(_) => Ok(Type::U16),
+            NodeKind::U32(_) => Ok(Type::U32),
+            NodeKind::U64(_) => Ok(Type::U64),
+            NodeKind::F32(_) => Ok(Type::F32),
+            NodeKind::F64(_) => Ok(Type::F64),
             NodeKind::Identifier(n) => self
                 .find_identifier(n, node.span)
                 .map(|symbol| symbol.ty.clone())
@@ -369,38 +389,40 @@ impl SemanticAnalyzer {
                     .unwrap_or(InitState::Nope);
 
                 let ty = match ty {
-                    Some(ty) => self.resolve_type(ty)
-                        .map_err(|err| vec![err])?,
-                    None => Type::Unknown,
+                    Some(ty) => Some(self.resolve_type(ty)
+                        .map_err(|err| vec![err])?),
+                    None => None,
                 };
 
                 let init_ty = match init {
                     Some(init) => {
                         let t = self.analyze_node(init)?;
 
-                        if ty != t && ty != Type::Unknown {
-                            return Err(vec![Diagnostic {
-                                path: self.path.clone(),
-                                primary_err: format!("`{name}` is declared as `{ty}` but initialized as `{t}`"),
-                                primary_span: init.span,
-                                secondary_messages: Vec::new(),
-                            }]);
+                        if ty != None {
+                            if ty.as_ref().unwrap() != &t {
+                                return Err(vec![Diagnostic {
+                                    path: self.path.clone(),
+                                    primary_err: format!("`{name}` is declared as `{}` but initialized as `{t}`", ty.unwrap()),
+                                    primary_span: init.span,
+                                    secondary_messages: Vec::new(),
+                                }]);
+                            }
                         }
 
-                        t
+                        Some(t)
                     },
-                    None => Type::Unknown,
+                    None => None,
                 };
 
-                let final_ty = if ty != Type::Unknown {
+                let final_ty = if ty != None {
                     ty
-                } else if init_ty != Type::Unknown {
+                } else if init_ty != None {
                     init_ty.clone()
                 } else {
-                    Type::Unknown
+                    None
                 };
 
-                if final_ty == Type::Unknown {
+                if final_ty == None {
                     return Err(vec![Diagnostic {
                         path: self.path.clone(),
                         primary_err: "type must be defined at declaration".to_string(),
@@ -409,11 +431,11 @@ impl SemanticAnalyzer {
                     }]);
                 }
 
-                *resolved_ty = Some(final_ty.clone());
+                *resolved_ty = Some(final_ty.clone().unwrap());
 
-                self.define_identifier(name, final_ty, *mutability, node.span, init_state);
+                self.define_identifier(name, final_ty.unwrap(), *mutability, node.span, init_state);
 
-                Ok(init_ty)
+                Ok(Type::Unit)
             },
         }
     }

@@ -122,8 +122,26 @@ impl IRGenerator {
 
     fn generate_node(&mut self, node: &Node, builder: &mut FunctionBuilder) -> Value {
         match &node.kind {
-            NodeKind::Integer(n) => builder.ins().iconst(types::I64, *n),
-            NodeKind::Float(n) => builder.ins().f64const(*n),
+            NodeKind::Integer(n) => builder.ins().iconst(match size_of::<usize>() {
+                4 => types::I32,
+                8 => types::I64,
+                _ => unreachable!()
+            }, *n),
+            NodeKind::Float(n) => match size_of::<usize>() {
+                4 => builder.ins().f32const(*n as f32),
+                8 => builder.ins().f64const(*n),
+                _ => unreachable!()
+            },
+            NodeKind::I8(n) => builder.ins().iconst(types::I8, *n as i64),
+            NodeKind::I16(n) => builder.ins().iconst(types::I16, *n as i64),
+            NodeKind::I32(n) => builder.ins().iconst(types::I32, *n as i64),
+            NodeKind::I64(n) => builder.ins().iconst(types::I64, *n as i64),
+            NodeKind::U8(n) => builder.ins().iconst(types::I8, *n as i64),
+            NodeKind::U16(n) => builder.ins().iconst(types::I16, *n as i64),
+            NodeKind::U32(n) => builder.ins().iconst(types::I32, *n as i64),
+            NodeKind::U64(n) => builder.ins().iconst(types::I64, *n as i64),
+            NodeKind::F32(n) => builder.ins().f32const(*n),
+            NodeKind::F64(n) => builder.ins().f64const(*n),
             NodeKind::Identifier(n) => {
                 let (slot, ty) = self.find_var(n);
                 builder.ins().stack_load(ty, slot, 0)
@@ -197,10 +215,11 @@ impl IRGenerator {
                 init,
                 mutability: _,
             } => {
+                let resolved_ty = resolved_ty.as_ref().unwrap();
                 let ss = builder.create_sized_stack_slot(StackSlotData {
                     kind: StackSlotKind::ExplicitSlot,
-                    size: 8,
-                    align_shift: 8,
+                    size: resolved_ty.size(),
+                    align_shift: resolved_ty.align(),
                     key: None,
                 });
                 let init = init.as_ref()
@@ -208,9 +227,7 @@ impl IRGenerator {
                     .unwrap_or(self.cache_unit(builder));
                 builder.ins().stack_store(init, ss, 0);
 
-                let ty = resolved_ty.as_ref()
-                    .unwrap_or_else(|| seman_err())
-                    .to_clif_ty();
+                let ty = resolved_ty.to_clif_ty();
 
                 self.scope.last_mut().unwrap().insert(name.clone(), (ss, ty));
 
