@@ -94,11 +94,33 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                     span: Span { start: pos, end: pos + 1 },
                 });
             },
-            '(' => tokens.push(Token {
-                kind: TokenKind::LParen,
-                lexeme: ch.to_string(),
-                span: Span { start: pos, end: pos + 1 },
-            }),
+            '(' => if let Some(&(pos, ':')) = chars.last() {
+                chars.pop();
+                let mut terminated = false;
+                while let Some((_, ch)) = chars.pop() {
+                    if ch == ':' {
+                        if let Some((_, ')')) = chars.pop() {
+                            terminated = true;
+                            break;
+                        }
+                    }
+                }
+
+                if !terminated {
+                    return Err(Diagnostic {
+                        path: path.to_string(),
+                        primary_err: "unterminated block comment".to_string(),
+                        primary_span: Span { start: pos, end: chars.len() },
+                        secondary_messages: Vec::new(),
+                    });
+                }
+            } else {
+                tokens.push(Token {
+                    kind: TokenKind::LParen,
+                    lexeme: ch.to_string(),
+                    span: Span { start: pos, end: pos + 1 },
+                });
+            },
             ')' => tokens.push(Token {
                 kind: TokenKind::RParen,
                 lexeme: ch.to_string(),
@@ -119,11 +141,19 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                 lexeme: ch.to_string(),
                 span: Span { start: pos, end: pos + 1 },
             }),
-            '/' => tokens.push(Token {
-                kind: TokenKind::Operator(Operator::Slash),
-                lexeme: ch.to_string(),
-                span: Span { start: pos, end: pos + 1 },
-            }),
+            '/' => if let Some((_, ':')) = chars.last() {
+                while let Some((_, ch)) = chars.pop() {
+                    if ch == '\n' {
+                        break
+                    }
+                }
+            } else {
+                tokens.push(Token {
+                    kind: TokenKind::Operator(Operator::Slash),
+                    lexeme: ch.to_string(),
+                    span: Span { start: pos, end: pos + 1 },
+                })
+            },
             '%' => tokens.push(Token {
                 kind: TokenKind::Operator(Operator::Modulo),
                 lexeme: ch.to_string(),
