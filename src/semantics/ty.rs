@@ -3,7 +3,7 @@ use cranelift::prelude::types;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-    Int, UInt, Float,
+    Int, UInt, Float, Bool,
     I8, I16, I32, I64,
     U8, U16, U32, U64,
     F32, F64,
@@ -65,7 +65,7 @@ impl Type {
                 8 => types::F64,
                 _ => unreachable!()
             },
-            Self::I8 | Self::U8 | Self::Unit => types::I8,
+            Self::I8 | Self::U8 | Self::Unit | Self::Bool => types::I8,
             Self::I16 | Self::U16 => types::I16,
             Self::I32 | Self::U32 => types::I32,
             Self::I64 | Self::U64 => types::I64,
@@ -77,7 +77,7 @@ impl Type {
     pub fn size(&self) -> u32 {
         match self {
             Self::Int | Self::UInt | Self::Float => size_of::<usize>() as u32,
-            Self::I8 | Self::U8 | Self::Unit => 1,
+            Self::I8 | Self::U8 | Self::Unit | Self::Bool => 1,
             Self::I16 | Self::U16 => 2,
             Self::I32 | Self::U32 | Self::F32 => 4,
             Self::I64 | Self::U64 | Self::F64 => 8,
@@ -98,6 +98,7 @@ impl fmt::Display for Type {
             Self::Int => write!(f, "int"),
             Self::UInt => write!(f, "uint"),
             Self::Float => write!(f, "float"),
+            Self::Bool => write!(f, "bool"),
             Self::I8 => write!(f, "i8"),
             Self::I16 => write!(f, "i16"),
             Self::I32 => write!(f, "i32"),

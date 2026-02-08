@@ -1,4 +1,4 @@
 let x = let y = let z = 10;
 
-var a = var b = var c: float;
-a := b := c := 10.4;
+var a = var b = var c: f32;
+a := b := c := 10.4f32;

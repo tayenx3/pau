@@ -10,7 +10,8 @@ pub enum TokenKind {
     U8(u8), U16(u16), U32(u32), U64(u64),
     F32(f32), F64(f64),
     Operator(Operator),
-    Let, Var,
+    Let, Var, If, Else, Then, End,
+    True, False,
     LParen, RParen, Assign,
     Colon, Comma, Semicolon,
 }

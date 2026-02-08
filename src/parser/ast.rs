@@ -6,6 +6,7 @@ use crate::span::Span;
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeKind {
     Integer(isize), UnsignedInt(usize), Float(f64), Identifier(String),
+    Boolean(bool),
     I8(i8), I16(i16), I32(i32), I64(i64),
     U8(u8), U16(u16), U32(u32), U64(u64),
     F32(f32), F64(f64),
@@ -27,6 +28,12 @@ pub enum NodeKind {
         resolved_ty: Option<Type>,
         init: Option<Box<Node>>,
         mutability: bool,
+    },
+    IfCondition {
+        condition: Box<Node>,
+        then_body: Box<Node>,
+        else_body: Option<Box<Node>>,
+        ty_cache: Option<Type>,
     },
 }
 

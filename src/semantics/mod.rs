@@ -2,6 +2,7 @@
 
 pub mod symbol;
 pub mod ty;
+pub mod scope;
 
 use std::collections::HashMap;
 use crate::diag::Diagnostic;
@@ -12,6 +13,7 @@ use crate::span::Span;
 use colored::Colorize;
 use symbol::{Symbol, InitState};
 use ty::Type;
+use scope::{Scope, ScopeContext};
 
 use strsim::jaro_winkler;
 
@@ -22,7 +24,7 @@ pub fn analyze(path: &str, ast: &mut [Node]) -> Result<(), Vec<Diagnostic>> {
 
 struct SemanticAnalyzer {
     path: String,
-    scope: Vec<Vec<Symbol>>,
+    scope: Vec<Scope>,
     type_registry: HashMap<String, Type>,
 }
 
@@ -30,13 +32,14 @@ impl SemanticAnalyzer {
     fn new(path: &str) -> Self {
         let mut s = Self {
             path: path.to_string(),
-            scope: vec![Vec::new()],
+            scope: vec![Scope::new(ScopeContext::Root)],
             type_registry: HashMap::new(),
         };
 
         s.type_registry.insert("int".to_string(), Type::Int);
         s.type_registry.insert("uint".to_string(), Type::UInt);
         s.type_registry.insert("float".to_string(), Type::Float);
+        s.type_registry.insert("bool".to_string(), Type::Bool);
         s.type_registry.insert("i8".to_string(), Type::I8);
         s.type_registry.insert("i16".to_string(), Type::I16);
         s.type_registry.insert("i32".to_string(), Type::I32);
@@ -59,7 +62,7 @@ impl SemanticAnalyzer {
         defined_at: Span,
         init_state: InitState,
     ) {
-        self.scope.last_mut().unwrap().push(Symbol {
+        self.scope.last_mut().unwrap().insert(Symbol {
             name: name.to_string(), ty, mutability, defined_at, init_state
         });
     }
@@ -69,7 +72,7 @@ impl SemanticAnalyzer {
         let mut candidate = None;
 
         for frame in self.scope.iter().rev() {
-            for symbol in frame {
+            for symbol in &frame.symbols {
                 let score = jaro_winkler(name, &symbol.name);
                 if score == 1.0 {
                     if symbol.init_state == InitState::Nope {
@@ -80,7 +83,7 @@ impl SemanticAnalyzer {
                             secondary_messages: vec![(
                                 Some(format!(
                                     "{}: identifier defined here:",
-                                    "help".bright_blue().bold()
+                                    "note".bright_blue().bold()
                                 )),
                                 Some(symbol.defined_at),
                             )],
@@ -94,7 +97,7 @@ impl SemanticAnalyzer {
                             secondary_messages: vec![(
                                 Some(format!(
                                     "{}: identifier defined here:",
-                                    "help".bright_blue().bold()
+                                    "note".bright_blue().bold()
                                 )),
                                 Some(symbol.defined_at),
                             )],
@@ -139,7 +142,7 @@ impl SemanticAnalyzer {
             let mut candidate = None;
 
             for frame in a.scope.iter_mut().rev() {
-                for symbol in frame {
+                for symbol in &mut frame.symbols {
                     let score = jaro_winkler(name, &symbol.name);
                     if score == 1.0 {
                         return Ok(symbol);
@@ -183,6 +186,8 @@ impl SemanticAnalyzer {
             Err(e) => { errors.extend(e); None },
         };
 
+        let scope_ctx = self.scope.last().unwrap().ctx;
+
         let symbol = aux(self, name, span).map_err(|err| vec![err])?;
 
         if !symbol.mutability {
@@ -193,7 +198,7 @@ impl SemanticAnalyzer {
                 secondary_messages: vec![(
                     Some(format!(
                         "{}: identifier defined here:",
-                        "help".bright_blue().bold()
+                        "note".bright_blue().bold()
                     )),
                     Some(symbol.defined_at),
                 )],
@@ -212,7 +217,7 @@ impl SemanticAnalyzer {
                     secondary_messages: vec![(
                         Some(format!(
                             "{}: identifier defined here:",
-                            "help".bright_blue().bold()
+                            "note".bright_blue().bold()
                         )),
                         Some(symbol.defined_at),
                     )],
@@ -220,6 +225,10 @@ impl SemanticAnalyzer {
             }
 
             symbol.ty = val_ty.clone();
+        }
+
+        if scope_ctx == ScopeContext::Conditional && symbol.init_state == InitState::Nope {
+            symbol.init_state = InitState::Maybe;
         }
 
         if errors.is_empty() { Ok(val_ty.unwrap()) } else { Err(errors) }
@@ -283,6 +292,7 @@ impl SemanticAnalyzer {
             NodeKind::Integer(_) => Ok(Type::Int),
             NodeKind::UnsignedInt(_) => Ok(Type::UInt),
             NodeKind::Float(_) => Ok(Type::Float),
+            NodeKind::Boolean(_) => Ok(Type::Bool),
             NodeKind::I8(_) => Ok(Type::I8),
             NodeKind::I16(_) => Ok(Type::I16),
             NodeKind::I32(_) => Ok(Type::I32),
@@ -416,6 +426,72 @@ impl SemanticAnalyzer {
                         secondary_messages: Vec::new(),
                     }])
                 }
+            },
+            NodeKind::IfCondition {
+                condition,
+                then_body,
+                else_body,
+                ty_cache
+            } => {
+                let mut errors = Vec::new();
+                match self.analyze_node(condition) {
+                    Ok(ty) => if ty != Type::Bool {
+                        errors.push(Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("expected `bool`, found `{ty}`"),
+                            primary_span: condition.span,
+                            secondary_messages: Vec::new(),
+                        });
+                    },
+                    Err(err) => errors.extend(err),
+                }
+
+                let then_ty = match self.analyze_node(then_body) {
+                    Ok(then_ty) => match else_body {
+                        Some(else_body) => {
+                            match self.analyze_node(else_body) {
+                                Ok(else_ty) => {
+                                    if else_ty != then_ty {
+                                        errors.push(Diagnostic {
+                                            path: self.path.clone(),
+                                            primary_err: format!("expected type `{}`", then_ty),
+                                            primary_span: else_body.span,
+                                            secondary_messages: vec![(
+                                                Some(format!("type `{then_ty}` was inferred here:")),
+                                                Some(then_body.span)
+                                            )],
+                                        });
+                                    }
+                                    then_ty
+                                },
+                                Err(err) => {
+                                    errors.extend(err);
+                                    Type::Unit // this won't get used
+                                },
+                            }
+                        },
+                        None => {
+                            if then_ty != Type::Unit {
+                                errors.push(Diagnostic {
+                                    path: self.path.clone(),
+                                    primary_err: format!("missing `else` clause that evaluates to `{then_ty}`"),
+                                    primary_span: node.span,
+                                    secondary_messages: Vec::new(),
+                                });
+                            }
+
+                            then_ty
+                        }
+                    }
+                    Err(err) => {
+                        errors.extend(err);
+                        Type::Unit // this won't get used
+                    },
+                };
+
+                *ty_cache = Some(then_ty.clone());
+
+                if errors.is_empty() { Ok(then_ty) } else { Err(errors) }
             },
         }
     }

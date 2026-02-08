@@ -38,11 +38,62 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                 lexeme: ch.to_string(),
                 span: Span { start: pos, end: pos + 1 },
             }),
-            '=' => tokens.push(Token {
-                kind: TokenKind::Assign,
-                lexeme: ch.to_string(),
-                span: Span { start: pos, end: pos + 1 },
-            }),
+            '=' => if let Some(&(end, '=')) = chars.last() {
+                chars.pop();
+                tokens.push(Token {
+                    kind: TokenKind::Operator(Operator::Eq),
+                    lexeme: ch.to_string(),
+                    span: Span { start: pos, end: end + 1 },
+                });
+            } else {
+                tokens.push(Token {
+                    kind: TokenKind::Assign,
+                    lexeme: ch.to_string(),
+                    span: Span { start: pos, end: pos + 1 },
+                });
+            },
+            '>' => if let Some(&(end, '=')) = chars.last() {
+                chars.pop();
+                tokens.push(Token {
+                    kind: TokenKind::Operator(Operator::Ge),
+                    lexeme: ch.to_string(),
+                    span: Span { start: pos, end: end + 1 },
+                });
+            } else {
+                tokens.push(Token {
+                    kind: TokenKind::Operator(Operator::Gt),
+                    lexeme: ch.to_string(),
+                    span: Span { start: pos, end: pos + 1 },
+                });
+            },
+            '<' => if let Some(&(end, '=')) = chars.last() {
+                chars.pop();
+                tokens.push(Token {
+                    kind: TokenKind::Operator(Operator::Le),
+                    lexeme: ch.to_string(),
+                    span: Span { start: pos, end: end + 1 },
+                });
+            } else {
+                tokens.push(Token {
+                    kind: TokenKind::Operator(Operator::Lt),
+                    lexeme: ch.to_string(),
+                    span: Span { start: pos, end: pos + 1 },
+                });
+            },
+            '!' => if let Some(&(end, '=')) = chars.last() {
+                chars.pop();
+                tokens.push(Token {
+                    kind: TokenKind::Operator(Operator::Ne),
+                    lexeme: ch.to_string(),
+                    span: Span { start: pos, end: end + 1 },
+                });
+            } else {
+                tokens.push(Token {
+                    kind: TokenKind::Operator(Operator::Bang),
+                    lexeme: ch.to_string(),
+                    span: Span { start: pos, end: pos + 1 },
+                });
+            },
             '(' => tokens.push(Token {
                 kind: TokenKind::LParen,
                 lexeme: ch.to_string(),
@@ -399,6 +450,36 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                     }),
                     "var" => tokens.push(Token {
                         kind: TokenKind::Var,
+                        lexeme: acc,
+                        span: Span { start: pos, end },
+                    }),
+                    "if" => tokens.push(Token {
+                        kind: TokenKind::If,
+                        lexeme: acc,
+                        span: Span { start: pos, end },
+                    }),
+                    "else" => tokens.push(Token {
+                        kind: TokenKind::Else,
+                        lexeme: acc,
+                        span: Span { start: pos, end },
+                    }),
+                    "then" => tokens.push(Token {
+                        kind: TokenKind::Then,
+                        lexeme: acc,
+                        span: Span { start: pos, end },
+                    }),
+                    "end" => tokens.push(Token {
+                        kind: TokenKind::End,
+                        lexeme: acc,
+                        span: Span { start: pos, end },
+                    }),
+                    "true" => tokens.push(Token {
+                        kind: TokenKind::True,
+                        lexeme: acc,
+                        span: Span { start: pos, end },
+                    }),
+                    "false" => tokens.push(Token {
+                        kind: TokenKind::False,
                         lexeme: acc,
                         span: Span { start: pos, end },
                     }),

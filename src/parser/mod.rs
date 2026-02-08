@@ -28,11 +28,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expect(&mut self, expected: &str) -> Result<(), Diagnostic> {
+    fn expect(&mut self, expected: &str) -> Result<&Token, Diagnostic> {
         match self.tokens.get(self.pos) {
             Some(tok) => if tok.to_string() == format!("`{}`", expected) {
                 self.pos += 1;
-                Ok(())
+                Ok(tok)
             } else {
                 Err(Diagnostic {
                     path: self.path.clone(),
@@ -240,6 +240,20 @@ impl<'a> Parser<'a> {
                     span: tok.span,
                 })
             },
+            TokenKind::True => {
+                self.pos += 1;
+                Ok(Node {
+                    kind: NodeKind::Boolean(true),
+                    span: tok.span,
+                })
+            },
+            TokenKind::False => {
+                self.pos += 1;
+                Ok(Node {
+                    kind: NodeKind::Boolean(false),
+                    span: tok.span,
+                })
+            },
             TokenKind::Operator(op) if op.is_prefix() => {
                 self.pos += 1;
                 let inner = self.parse_primary()?;
@@ -261,6 +275,7 @@ impl<'a> Parser<'a> {
             },
             TokenKind::Let => self.parse_decl(false),
             TokenKind::Var => self.parse_decl(true),
+            TokenKind::If => self.parse_if(),
             _ => Err(Diagnostic {
                 path: self.path.clone(),
                 primary_err: format!("expected expression, found {}", tok),
@@ -302,6 +317,32 @@ impl<'a> Parser<'a> {
                 init,
                 mutability
             },
+            span: stmt_span,
+        })
+    }
+
+    fn parse_if(&mut self) -> Result<Node, Diagnostic> {
+        let mut stmt_span = self.tokens.get(self.pos).unwrap().span;
+        self.pos += 1;
+
+        let condition = Box::new(self.parse_expression(0)?);
+        self.expect("then")?;
+
+        let then_body = Box::new(self.parse_expression(0)?);
+        let else_body = match self.expect("else") {
+            Ok(_) => {
+                let expr = self.parse_expression(0)?;
+                stmt_span.end = expr.span.end;
+                Some(Box::new(expr))
+            },
+            Err(_) => {
+                None
+            },
+        };
+        stmt_span.end = self.expect("end")?.span.end;
+
+        Ok(Node {
+            kind: NodeKind::IfCondition { condition, then_body, else_body, ty_cache: None },
             span: stmt_span,
         })
     }

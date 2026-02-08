@@ -9,10 +9,10 @@
 | Feature                                            | Status |
 | -------------------------------------------------- | ------ |
 | Integers and Floats                                |   ✅   |
-| Booleans                                           |   ❌   |
+| Booleans                                           |   ✅   |
 | Arithmetic ops (`+`, `-`, `*`, `/`, `%`)           |   ✅   |
-| Comparative ops (`==`, `!=`, `>`, `<`, `>=`, `<=`) |   ❌   |
+| Comparative ops (`==`, `!=`, `>`, `<`, `>=`, `<=`) |   ✅   |
 | Variables (`let`, `var`)                           |   ✅   |
-| Conditionals (`if`, `else`)                        |   ❌   |
+| Conditionals (`if`, `else`)                        |   ✅   |
 | Loops (`while`, `for`)                             |   ❌   |
 | Functions (`func`)                                 |   ❌   |
