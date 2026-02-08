@@ -71,7 +71,7 @@ fn run_cli(cli: Cli) -> Result<(), String> {
     let output_exe = cli.output
         .unwrap_or(format!("{}.exe", Path::new(&path).file_stem().unwrap().display()));
 
-    link(&obj_path, &output_exe, cli.verbose)?;
+    link(&obj_path, &output_exe)?;
 
     if !cli.keep_object_file {
         fs::remove_file(obj_path)
@@ -80,7 +80,7 @@ fn run_cli(cli: Cli) -> Result<(), String> {
 
     let comp_duration = start_time.elapsed().as_secs_f32();
 
-    if cli.verbose {
+    if cli.long_time_output {
         println!("{} in {comp_duration}s", "Compilation finished".bright_green().bold());
     } else {
         println!("{} in {comp_duration:.2}s", "Compilation finished".bright_green().bold());
@@ -89,24 +89,24 @@ fn run_cli(cli: Cli) -> Result<(), String> {
     Ok(())
 }
 
-fn link(obj_path: &str, output_exe: &str, verbose: bool) -> Result<(), String> {
+fn link(obj_path: &str, output_exe: &str) -> Result<(), String> {
     use std::process::Command;
 
     let linker_options = &[
-        ("lld-link", &[
+        #[cfg(target_os = "windows")] ("lld-link", &[
             &format!("/out:{output_exe}"),
             "/subsystem:console",
             "/entry:main",
         ] as &[&str]),
-        ("ld.lld", &[
+        #[cfg(target_os = "linux")] ("ld.lld", &[
             &format!("-o {output_exe}"),
             "--entry=main",
         ]),
-        ("ld64.lld", &[
+        #[cfg(target_os = "macos")] ("ld64.lld", &[
             &format!("-o {output_exe}"),
             "-e main",
         ]),
-        ("link", &[
+        #[cfg(target_os = "windows")] ("link", &[
             &format!("/out:{output_exe}"),
             "/subsystem:console",
             "/entry:main",
@@ -128,10 +128,6 @@ fn link(obj_path: &str, output_exe: &str, verbose: bool) -> Result<(), String> {
             // if linker succeeded, stop
             if output.status.success() {
                 link_success = true;
-                if verbose {
-                    eprintln!("successfully linked with {}",
-                        linker_name.cyan().bold());
-                }
                 break
             }
         }

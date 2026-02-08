@@ -160,6 +160,15 @@ impl IRGenerator {
                 rhs,
                 ty_cache,
             } => {
+                if *op == Operator::Walrus {
+                    if let NodeKind::Identifier(n) = &lhs.kind {
+                        let rval = self.generate_node(rhs, builder);
+                        let (ss, _) = self.find_var(n);
+                        builder.ins().stack_store(rval, ss, 0);
+                        return rval;
+                    }
+                }
+                
                 let lval = self.generate_node(lhs, builder);
                 let rval = self.generate_node(rhs, builder);
 
@@ -180,12 +189,14 @@ impl IRGenerator {
                         _ => seman_err(),
                     },
                     Operator::Slash => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ty if ty.is_int() => builder.ins().sdiv(lval, rval),
+                        ty if ty.is_int() && ty.is_signed() => builder.ins().sdiv(lval, rval),
+                        ty if ty.is_int() && ty.is_unsigned() => builder.ins().udiv(lval, rval),
                         ty if ty.is_float() => builder.ins().fdiv(lval, rval),
                         _ => seman_err(),
                     },
                     Operator::Modulo => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
-                        ty if ty.is_int() => builder.ins().srem(lval, rval),
+                        ty if ty.is_int() && ty.is_signed() => builder.ins().srem(lval, rval),
+                        ty if ty.is_int() && ty.is_unsigned() => builder.ins().urem(lval, rval),
                         ty if ty.is_float() => frem(lval, rval, builder),
                         _ => seman_err(),
                     },

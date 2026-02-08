@@ -14,7 +14,7 @@ pub struct Cli {
     pub output: Option<String>,
 
     #[arg(short, long)]
-    pub verbose: bool,
+    pub long_time_output: bool,
 
     #[arg(short, long)]
     pub keep_object_file: bool,
