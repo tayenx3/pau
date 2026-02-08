@@ -7,9 +7,9 @@
 > Context: i made 14 languages and they all failed, so i decided to make a more bland/simpler one
 
 ```go
-func main() = {
+func main()
     println("Hello, world!");
-}
+end
 ```
 
 Pau is a statically-typed, straightforward, experimental compiled programming language made in Rust. Pau is **NOT** a systems language nor a production-ready language. it is simply an experimental language that's made to be deliberately simple.

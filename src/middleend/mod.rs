@@ -330,13 +330,26 @@ impl IRGenerator {
 
                 builder.switch_to_block(then_block);
                 self.unit = Some(builder.block_params(then_block)[0]);
-                let then_val = self.generate_node(then_body, builder);
+                let mut then_val = self.unit.unwrap();
+                self.scope.push(HashMap::new());
+                for node in then_body {
+                    then_val = self.generate_node(node, builder);
+                }
+                self.scope.pop();
                 builder.ins().jump(merge_block, &[BlockArg::Value(then_val), BlockArg::Value(self.unit.unwrap())]); // keep passing unit
 
                 builder.switch_to_block(else_block);
                 self.unit = Some(builder.block_params(else_block)[0]);
                 let else_val = match else_body {
-                    Some(else_body) => self.generate_node(else_body, builder),
+                    Some(else_body) => {
+                        self.scope.push(HashMap::new());
+                        let mut val = self.unit.unwrap();
+                        for node in else_body {
+                            val = self.generate_node(node, builder);
+                        }
+                        self.scope.pop();
+                        val
+                    },
                     None => builder.block_params(else_block)[0],
                 };
                 builder.ins().jump(merge_block, &[BlockArg::Value(else_val), BlockArg::Value(self.unit.unwrap())]); // keep passing unit

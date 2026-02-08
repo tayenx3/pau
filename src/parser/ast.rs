@@ -31,8 +31,8 @@ pub enum NodeKind {
     },
     IfCondition {
         condition: Box<Node>,
-        then_body: Box<Node>,
-        else_body: Option<Box<Node>>,
+        then_body: Vec<Node>,
+        else_body: Option<Vec<Node>>,
         ty_cache: Option<Type>,
     },
 }

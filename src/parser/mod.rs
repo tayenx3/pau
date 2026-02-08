@@ -328,12 +328,24 @@ impl<'a> Parser<'a> {
         let condition = Box::new(self.parse_expression(0)?);
         self.expect("then")?;
 
-        let then_body = Box::new(self.parse_expression(0)?);
+        let mut then_body = Vec::new();
+        while let Some(tok) = self.tokens.get(self.pos) {
+            then_body.push(self.parse_statement()?);
+            if tok.kind == TokenKind::End || tok.kind == TokenKind::Else {
+                break
+            }
+        }
         let else_body = match self.expect("else") {
             Ok(_) => {
-                let expr = self.parse_expression(0)?;
-                stmt_span.end = expr.span.end;
-                Some(Box::new(expr))
+                let mut else_body = Vec::new();
+                while let Some(tok) = self.tokens.get(self.pos) {
+                    else_body.push(self.parse_statement()?);
+                    if tok.kind == TokenKind::End {
+                        break
+                    }
+                }
+                stmt_span.end = else_body.last().unwrap().span.end;
+                Some(else_body)
             },
             Err(_) => {
                 None

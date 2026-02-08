@@ -446,48 +446,72 @@ impl SemanticAnalyzer {
                     Err(err) => errors.extend(err),
                 }
 
-                let then_ty = match self.analyze_node(then_body) {
-                    Ok(then_ty) => match else_body {
-                        Some(else_body) => {
-                            match self.analyze_node(else_body) {
-                                Ok(else_ty) => {
-                                    if else_ty != then_ty {
-                                        errors.push(Diagnostic {
-                                            path: self.path.clone(),
-                                            primary_err: format!("expected type `{}`", then_ty),
-                                            primary_span: else_body.span,
-                                            secondary_messages: vec![(
-                                                Some(format!("type `{then_ty}` was inferred here:")),
-                                                Some(then_body.span)
-                                            )],
-                                        });
-                                    }
-                                    then_ty
-                                },
+                let mut then_ty = None;
+
+                self.scope.push(Scope::new(ScopeContext::Conditional));
+                for node in &mut *then_body {
+                    then_ty = match self.analyze_node(node) {
+                        Ok(ty) => Some(ty),
+                        Err(err) => {
+                            errors.extend(err);
+                            None
+                        },
+                    };
+                }
+                self.scope.pop();
+
+                if then_ty.is_none() {
+                    return Err(errors);
+                }
+
+                let then_ty = then_ty.unwrap();
+
+                match else_body {
+                    Some(else_body) => {
+                        self.scope.push(Scope::new(ScopeContext::Conditional));
+                        let mut else_ty = None;
+
+                        for node in &mut *else_body {
+                            else_ty = match self.analyze_node(node) {
+                                Ok(ty) => Some(ty),
                                 Err(err) => {
                                     errors.extend(err);
-                                    Type::Unit // this won't get used
+                                    None
                                 },
-                            }
-                        },
-                        None => {
-                            if then_ty != Type::Unit {
-                                errors.push(Diagnostic {
-                                    path: self.path.clone(),
-                                    primary_err: format!("missing `else` clause that evaluates to `{then_ty}`"),
-                                    primary_span: node.span,
-                                    secondary_messages: Vec::new(),
-                                });
-                            }
+                            };
+                        }
+                        if else_ty.is_none() {
+                            return Err(errors);
+                        }
+                        self.scope.pop();
+                        let start = else_body.first().unwrap().span;
+                        let primary_span = start.connect(&else_body.last().unwrap().span);
 
-                            then_ty
+                        let start = then_body.first().unwrap().span;
+                        let then_body_span = start.connect(&then_body.last().unwrap().span);
+                        if else_ty.unwrap() != then_ty {
+                            errors.push(Diagnostic {
+                                path: self.path.clone(),
+                                primary_err: format!("expected type `{}`", then_ty),
+                                primary_span,
+                                secondary_messages: vec![(
+                                    Some(format!("type `{then_ty}` was inferred here:")),
+                                    Some(then_body_span)
+                                )],
+                            });
+                        }
+                    },
+                    None => {
+                        if then_ty != Type::Unit {
+                            errors.push(Diagnostic {
+                                path: self.path.clone(),
+                                primary_err: format!("missing `else` clause that evaluates to `{then_ty}`"),
+                                primary_span: node.span,
+                                secondary_messages: Vec::new(),
+                            });
                         }
                     }
-                    Err(err) => {
-                        errors.extend(err);
-                        Type::Unit // this won't get used
-                    },
-                };
+                }
 
                 *ty_cache = Some(then_ty.clone());
 
