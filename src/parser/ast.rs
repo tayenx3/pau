@@ -35,6 +35,10 @@ pub enum NodeKind {
         else_body: Option<Vec<Node>>,
         ty_cache: Option<Type>,
     },
+    WhileLoop {
+        condition: Box<Node>,
+        body: Vec<Node>,
+    },
 }
 
 

@@ -84,7 +84,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_statement(&mut self) -> Result<Node, Diagnostic> {
-        let mut node = self.parse_expression(0)?;
+        let mut node = match self.tokens.get(self.pos) {
+            Some(Token { kind: TokenKind::While, .. }) => self.parse_while()?,
+            _ => self.parse_expression(0)?,
+        };
 
         match self.tokens.get(self.pos) {
             Some(Token { kind: TokenKind::Semicolon, span, .. }) => {
@@ -357,6 +360,27 @@ impl<'a> Parser<'a> {
             kind: NodeKind::IfCondition { condition, then_body, else_body, ty_cache: None },
             span: stmt_span,
         })
+    }
+
+    fn parse_while(&mut self) -> Result<Node, Diagnostic> {
+        let mut stmt_span = self.tokens.get(self.pos).unwrap().span;
+        self.pos += 1;
+
+        let condition = Box::new(self.parse_expression(0)?);
+        let mut body = Vec::new();
+        while let Some(tok) = self.tokens.get(self.pos) {
+            body.push(self.parse_statement()?);
+            if tok.kind == TokenKind::End {
+                break
+            }
+        }
+        stmt_span.end = self.expect("end")?.span.end;
+
+        Ok(Node {
+            kind: NodeKind::WhileLoop { condition, body },
+            span: stmt_span,
+        })
+
     }
 
     fn parse_type(&mut self) -> Result<ParseType, Diagnostic> {

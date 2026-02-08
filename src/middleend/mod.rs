@@ -363,6 +363,10 @@ impl IRGenerator {
 
                 builder.block_params(merge_block)[0]
             },
+            NodeKind::WhileLoop {
+                condition: _,
+                body: _,
+            } => todo!("while loops"),
         }
     }
 }

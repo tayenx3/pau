@@ -14,5 +14,5 @@
 | Comparative ops (`==`, `!=`, `>`, `<`, `>=`, `<=`) |   ✅   |
 | Variables (`let`, `var`)                           |   ✅   |
 | Conditionals (`if`, `else`)                        |   ✅   |
-| Loops (`while`, `for`)                             |   ❌   |
+| Loops (`while`, `for`)                             |   🟡   |
 | Functions (`func`)                                 |   ❌   |

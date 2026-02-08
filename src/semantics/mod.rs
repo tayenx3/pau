@@ -517,6 +517,31 @@ impl SemanticAnalyzer {
 
                 if errors.is_empty() { Ok(then_ty) } else { Err(errors) }
             },
+            NodeKind::WhileLoop {
+                condition,
+                body,
+            } => {
+                let mut errors = Vec::new();
+                match self.analyze_node(condition) {
+                    Ok(ty) => if ty != Type::Bool {
+                        errors.push(Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("expected `bool`, found `{ty}`"),
+                            primary_span: condition.span,
+                            secondary_messages: Vec::new(),
+                        });
+                    },
+                    Err(err) => errors.extend(err),
+                }
+
+                for node in body {
+                    if let Err(e) = self.analyze_node(node) {
+                        errors.extend(e);
+                    }
+                }
+
+                if errors.is_empty() { Ok(Type::Unit) } else { Err(errors) }
+            },
         }
     }
 }
