@@ -309,8 +309,6 @@ impl IRGenerator {
                 else_body,
                 ty_cache,
             } => {
-                // this was a mouthful
-
                 let then_block = builder.create_block();
                 builder.append_block_param(then_block, types::I8);
                 let else_block = builder.create_block();
@@ -364,9 +362,47 @@ impl IRGenerator {
                 builder.block_params(merge_block)[0]
             },
             NodeKind::WhileLoop {
-                condition: _,
-                body: _,
-            } => todo!("while loops"),
+                condition,
+                body,
+            } => {
+                let cond_block = builder.create_block();
+                builder.append_block_param(cond_block, types::I8);
+                let body_block = builder.create_block();
+                builder.append_block_param(body_block, types::I8);
+                let break_block = builder.create_block();
+                builder.append_block_param(break_block, types::I8);
+
+                let unit = self.cache_unit(builder);
+                builder.ins().jump(
+                    cond_block,
+                    &[BlockArg::Value(unit)]
+                );
+                builder.switch_to_block(cond_block);
+                let unit = builder.block_params(cond_block)[0];
+                self.unit = Some(unit);
+                let cond_val = self.generate_node(condition, builder);
+                builder.ins().brif(
+                    cond_val,
+                    body_block, &[BlockArg::Value(unit)],
+                    break_block, &[BlockArg::Value(unit)]
+                );
+
+                builder.switch_to_block(body_block);
+                let unit = builder.block_params(body_block)[0];
+                self.unit = Some(unit);
+                for node in body {
+                    self.generate_node(node, builder);
+                }
+                builder.ins().jump(cond_block, &[BlockArg::Value(unit)]);
+
+                builder.seal_block(cond_block);
+                builder.seal_block(body_block);
+
+                builder.switch_to_block(break_block);
+                builder.seal_block(break_block);
+                self.unit = Some(builder.block_params(break_block)[0]);
+                self.unit.unwrap()
+            },
         }
     }
 }

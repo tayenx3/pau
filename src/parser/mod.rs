@@ -332,18 +332,19 @@ impl<'a> Parser<'a> {
         self.expect("then")?;
 
         let mut then_body = Vec::new();
-        while let Some(tok) = self.tokens.get(self.pos) {
+        while self.tokens.get(self.pos).is_some() {
             then_body.push(self.parse_statement()?);
-            if tok.kind == TokenKind::End || tok.kind == TokenKind::Else {
+            if let Some(Token { kind: TokenKind::End | TokenKind::Else, .. })
+                = self.tokens.get(self.pos) {
                 break
             }
         }
         let else_body = match self.expect("else") {
             Ok(_) => {
                 let mut else_body = Vec::new();
-                while let Some(tok) = self.tokens.get(self.pos) {
+                while self.tokens.get(self.pos).is_some() {
                     else_body.push(self.parse_statement()?);
-                    if tok.kind == TokenKind::End {
+                    if let Some(Token { kind: TokenKind::End, .. }) = self.tokens.get(self.pos) {
                         break
                     }
                 }
@@ -367,10 +368,11 @@ impl<'a> Parser<'a> {
         self.pos += 1;
 
         let condition = Box::new(self.parse_expression(0)?);
+        stmt_span.end = self.expect("do")?.span.end;
         let mut body = Vec::new();
-        while let Some(tok) = self.tokens.get(self.pos) {
+        while self.tokens.get(self.pos).is_some() {
             body.push(self.parse_statement()?);
-            if tok.kind == TokenKind::End {
+            if let Some(Token { kind: TokenKind::End, .. }) = self.tokens.get(self.pos) {
                 break
             }
         }

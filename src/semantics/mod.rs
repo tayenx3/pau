@@ -534,11 +534,13 @@ impl SemanticAnalyzer {
                     Err(err) => errors.extend(err),
                 }
 
+                self.scope.push(Scope::new(ScopeContext::Conditional));
                 for node in body {
                     if let Err(e) = self.analyze_node(node) {
                         errors.extend(e);
                     }
                 }
+                self.scope.pop();
 
                 if errors.is_empty() { Ok(Type::Unit) } else { Err(errors) }
             },
