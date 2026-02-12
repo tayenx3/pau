@@ -39,8 +39,22 @@ pub enum NodeKind {
         condition: Box<Node>,
         body: Vec<Node>,
     },
+    FunctionDef {
+        name: String,
+        params: Vec<Param>,
+        return_ty: Option<ParseType>,
+        body: Vec<Node>,
+        ty_cache: Option<Type>,
+    },
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Param {
+    pub name: String,
+    pub ty: ParseType,
+    pub span: Span,
+    pub ty_cache: Option<Type>
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {

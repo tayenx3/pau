@@ -1,8 +1,10 @@
-let x = 6;
-let y = 7;
+def main()
+    let x = 6;
+    let y = 7;
 
-if 6 != 7 then
-    10
-else
-    4
+    if 6 != 7 then
+        10
+    else
+        4
+    end
 end

@@ -7,6 +7,7 @@ pub enum Type {
     I8, I16, I32, I64,
     U8, U16, U32, U64,
     F32, F64,
+    Function(Vec<Type>, Box<Type>),
     Unit,
 }
 
@@ -71,6 +72,7 @@ impl Type {
             Self::I64 | Self::U64 => types::I64,
             Self::F32 => types::F32,
             Self::F64 => types::F64,
+            Self::Function(_, _) => todo!("Function types"),
         }
     }
 
@@ -81,6 +83,7 @@ impl Type {
             Self::I16 | Self::U16 => 2,
             Self::I32 | Self::U32 | Self::F32 => 4,
             Self::I64 | Self::U64 | Self::F64 => 8,
+            Self::Function(_, _) => todo!("Function types"),
         }
     }
 
@@ -110,6 +113,19 @@ impl fmt::Display for Type {
             Self::F32 => write!(f, "f32"),
             Self::F64 => write!(f, "f64"),
             Self::Unit => write!(f, "()"),
+            Self::Function(params, return_ty) => {
+                let mut acc = String::new();
+
+                for (idx, param) in params.iter().enumerate() {
+                    acc.push_str(&format!("{}", param));
+
+                    if idx < params.len() - 1 {
+                        acc.push_str(", ");
+                    }
+                }
+                
+                write!(f, "def({acc}): {return_ty}")
+            },
         }
     }
 }

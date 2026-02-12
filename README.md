@@ -6,8 +6,8 @@
 
 > Context: i made 14 languages and they all failed, so i decided to make a more bland/simpler one
 
-```go
-func main()
+```py
+def main()
     println("Hello, world!");
 end
 ```

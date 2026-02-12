@@ -523,6 +523,11 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                         lexeme: acc,
                         span: Span { start: pos, end },
                     }),
+                    "def" => tokens.push(Token {
+                        kind: TokenKind::Def,
+                        lexeme: acc,
+                        span: Span { start: pos, end },
+                    }),
                     _ => tokens.push(Token {
                         kind: TokenKind::Identifier(acc.clone()),
                         lexeme: acc,

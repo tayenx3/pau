@@ -1,8 +1,10 @@
-/: all or 10
-let x = let y = let z = 10;
+def main()
+    /: all or 10
+    let x = let y = let z = 10;
 
-/: all are f32
-var a = var b = var c: f32;
+    /: all are f32
+    var a = var b = var c: f32;
 
-/: all are 10.4
-a := b := c := 10.4f32;
+    /: all are 10.4
+    a := b := c := 10.4f32;
+main

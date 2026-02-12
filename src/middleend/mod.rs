@@ -403,6 +403,7 @@ impl IRGenerator {
                 self.unit = Some(builder.block_params(break_block)[0]);
                 self.unit.unwrap()
             },
+            _ => todo!("{node:#?}")
         }
     }
 }

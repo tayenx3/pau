@@ -45,7 +45,7 @@ fn run_cli(cli: Cli) -> Result<(), String> {
         eprintln!("{}: AST: {parse_tree:#?}", "debug".bright_cyan().bold());
     }
 
-    semantics::analyze(&path, &mut parse_tree)
+    semantics::analyze(&path, &mut parse_tree, source.len())
         .map_err(
             |err|
             err.iter()

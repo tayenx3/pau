@@ -2,7 +2,7 @@ use super::symbol::Symbol;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ScopeContext {
-    Root, Conditional,
+    Root, Conditional, Function
 }
 
 #[derive(Debug, Clone, PartialEq)]

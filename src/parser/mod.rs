@@ -5,7 +5,7 @@ pub mod ty;
 
 use crate::lexer::token::{Token, TokenKind};
 use crate::diag::Diagnostic;
-use ast::{Node, NodeKind};
+use ast::{Node, NodeKind, Param};
 use ty::{ParseType, ParseTypeKind};
 
 pub fn parse(path: &str, tokens: &[Token]) -> Result<Vec<Node>, Diagnostic> {
@@ -77,10 +77,84 @@ impl<'a> Parser<'a> {
         let mut stmts = Vec::new();
 
         while self.tokens.get(self.pos).is_some() {
-            stmts.push(self.parse_statement()?);
+            stmts.push(self.parse_root_item()?);
         }
 
         Ok(stmts)
+    }
+
+    fn parse_root_item(&mut self) -> Result<Node, Diagnostic> {
+        let tok = match self.tokens.get(self.pos) {
+            Some(tok) => tok,
+            None => return Err(Diagnostic {
+                path: self.path.clone(),
+                primary_err: "expected item, found end of input".to_string(),
+                primary_span: self.tokens.last().unwrap().span.splat_to_end(),
+                secondary_messages: Vec::new(),
+            }),
+        };
+
+        match &tok.kind {
+            TokenKind::Def => self.parse_def(),
+            _ => Err(Diagnostic {
+                path: self.path.clone(),
+                primary_err: format!("expected item, found {}", tok),
+                primary_span: tok.span,
+                secondary_messages: Vec::new(),
+            }),
+        }
+    }
+
+    fn parse_def(&mut self) -> Result<Node, Diagnostic> {
+        let mut stmt_span = self.tokens.get(self.pos).unwrap().span;
+        self.pos += 1;
+        
+        let name = self.expect_ident()?.lexeme;
+
+        self.expect("(")?;
+
+        let mut params = Vec::new();
+        while let Some(tok) = self.tokens.get(self.pos) {
+            if tok.kind == TokenKind::RParen {
+                break
+            }
+
+            let ident = self.expect_ident()?;
+            let mut param_span = ident.span;
+            let param_name = ident.lexeme;
+            self.expect(":")?;
+            let param_ty = self.parse_type()?;
+            param_span.end = param_ty.span.end;
+
+            params.push(Param {
+                name: param_name,
+                ty: param_ty,
+                span: param_span,
+                ty_cache: None,
+            });
+        }
+
+        self.expect(")")?;
+
+        let return_ty = if self.expect(":").is_ok() {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        let mut body = Vec::new();
+        while self.tokens.get(self.pos).is_some() {
+            body.push(self.parse_statement()?);
+            if let Some(Token { kind: TokenKind::End, .. }) = self.tokens.get(self.pos) {
+                break
+            }
+        }
+        stmt_span.end = self.expect("end")?.span.end;
+
+        Ok(Node {
+            kind: NodeKind::FunctionDef { name, params, return_ty, body, ty_cache: None },
+            span: stmt_span,
+        })
     }
 
     fn parse_statement(&mut self) -> Result<Node, Diagnostic> {
