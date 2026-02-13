@@ -16,3 +16,13 @@
 | Conditionals (`if`, `else`)                        |   ✅   |
 | Loops (`while`)                                    |   ✅   |
 | Functions (`def`)                                  |   ✅   |
+
+## v0.1.0-alpha
+| Feature                                    | Status |
+| ------------------------------------------ | ------ |
+| Semantics Checker Fixes                    |   ❌   |
+| Strings                                    |   ❌   |
+| I/O (and File I/O)                         |   ❌   |
+| Type conversions                           |   ❌   |
+| Arrays                                     |   ❌   |
+| Memory Management with Pointers (probably) |   ❌   |

@@ -4,5 +4,5 @@ def main(): int
     let r = 100.0;
     let x = pi * r * r;
 
-    0
+    a
 end

@@ -2,7 +2,7 @@ def main(): int
     let x = 6;
     let y = 7;
 
-    if 6 != 7 then
+    if x != y then
         10
     else
         4

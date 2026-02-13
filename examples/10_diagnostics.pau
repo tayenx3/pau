@@ -1,0 +1,7 @@
+def main(): int
+    0
+end
+
+def should_error1(): int
+    hi + 0.9
+end

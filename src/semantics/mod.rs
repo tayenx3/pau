@@ -342,8 +342,7 @@ impl SemanticAnalyzer {
             }
         }
 
-        match self.find_identifier("main", Span { start: 0, end: 0 })
-        {
+        match self.find_identifier("main", Span { start: 0, end: 0 }) {
             Ok(sy) => {
                 let expected_ty = Type::Function(Vec::new(), Box::new(Type::Int));
                 if sy.ty != expected_ty {
