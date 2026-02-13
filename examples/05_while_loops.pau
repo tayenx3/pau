@@ -1,4 +1,4 @@
-def main()
+def main(): int
     var counter = 0;
 
     while counter < 10 do

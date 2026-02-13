@@ -1,8 +1,8 @@
-def main()
+def main(): int
     let a = 10;
     let pi = 3.14;
     let r = 100.0;
     let x = pi * r * r;
 
-    a
+    0
 end

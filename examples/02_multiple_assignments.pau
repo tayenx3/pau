@@ -1,4 +1,4 @@
-def main()
+def main(): int
     /: all or 10
     let x = let y = let z = 10;
 
@@ -7,4 +7,6 @@ def main()
 
     /: all are 10.4
     a := b := c := 10.4f32;
-main
+
+    0
+end

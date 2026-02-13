@@ -46,6 +46,10 @@ pub enum NodeKind {
         body: Vec<Node>,
         ty_cache: Option<Type>,
     },
+    FunctionCall {
+        callee: String,
+        args: Vec<Node>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

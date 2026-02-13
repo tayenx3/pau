@@ -1,0 +1,7 @@
+def add(x: int, y: int): int
+    x + y
+end
+
+def main(): int
+    add(5, 3)
+end

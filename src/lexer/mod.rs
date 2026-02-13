@@ -42,7 +42,7 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                 chars.pop();
                 tokens.push(Token {
                     kind: TokenKind::Operator(Operator::Eq),
-                    lexeme: ch.to_string(),
+                    lexeme: "==".to_string(),
                     span: Span { start: pos, end: end + 1 },
                 });
             } else {
@@ -56,7 +56,7 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                 chars.pop();
                 tokens.push(Token {
                     kind: TokenKind::Operator(Operator::Ge),
-                    lexeme: ch.to_string(),
+                    lexeme: ">=".to_string(),
                     span: Span { start: pos, end: end + 1 },
                 });
             } else {
@@ -70,7 +70,7 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                 chars.pop();
                 tokens.push(Token {
                     kind: TokenKind::Operator(Operator::Le),
-                    lexeme: ch.to_string(),
+                    lexeme: "<=".to_string(),
                     span: Span { start: pos, end: end + 1 },
                 });
             } else {
@@ -84,7 +84,7 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                 chars.pop();
                 tokens.push(Token {
                     kind: TokenKind::Operator(Operator::Ne),
-                    lexeme: ch.to_string(),
+                    lexeme: "!=".to_string(),
                     span: Span { start: pos, end: end + 1 },
                 });
             } else {

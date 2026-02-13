@@ -132,6 +132,10 @@ impl<'a> Parser<'a> {
                 span: param_span,
                 ty_cache: None,
             });
+
+            if self.expect(",").is_err() {
+                break
+            }
         }
 
         self.expect(")")?;
@@ -144,10 +148,10 @@ impl<'a> Parser<'a> {
 
         let mut body = Vec::new();
         while self.tokens.get(self.pos).is_some() {
-            body.push(self.parse_statement()?);
             if let Some(Token { kind: TokenKind::End, .. }) = self.tokens.get(self.pos) {
                 break
             }
+            body.push(self.parse_statement()?);
         }
         stmt_span.end = self.expect("end")?.span.end;
 
@@ -242,10 +246,31 @@ impl<'a> Parser<'a> {
             },
             TokenKind::Identifier(n) => {
                 self.pos += 1;
-                Ok(Node {
-                    kind: NodeKind::Identifier(n.clone()),
-                    span: tok.span,
-                })
+                if self.expect("(").is_ok() {
+                    let mut args = Vec::new();
+                    while self.tokens.get(self.pos).is_some() {
+                        let arg = self.parse_expression(0)?;
+                        args.push(arg);
+
+                        if self.expect(",").is_err() {
+                            break
+                        }
+                    }
+                    let mut span = self.expect(")")?.span;
+                    span.start = tok.span.start;
+                    Ok(Node {
+                        kind: NodeKind::FunctionCall {
+                            callee: n.clone(),
+                            args
+                        },
+                        span,
+                    })
+                } else {
+                    Ok(Node {
+                        kind: NodeKind::Identifier(n.clone()),
+                        span: tok.span,
+                    })
+                }
             },
             TokenKind::I8(n) => {
                 self.pos += 1;

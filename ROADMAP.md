@@ -15,4 +15,4 @@
 | Variables (`let`, `var`)                           |   ✅   |
 | Conditionals (`if`, `else`)                        |   ✅   |
 | Loops (`while`)                                    |   ✅   |
-| Functions (`def`)                                  |   🟡   |
+| Functions (`def`)                                  |   ✅   |

@@ -1,0 +1,11 @@
+def main(): int
+    count(10)
+
+    0
+end
+
+def count(n: int)
+    if n < 1 then
+        count(n - 1)
+    end
+end

@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use cranelift::prelude::*;
-use cranelift_codegen::{settings::{self, Flags}};
+use cranelift_codegen::{ir::{UserExternalName, UserFuncName}, settings::{self, Flags}};
 use cranelift_codegen::ir::{
     BlockArg,
     StackSlot,
@@ -11,10 +11,10 @@ use cranelift_codegen::ir::{
         FloatCC
     },
 };
-use cranelift_module::{default_libcall_names, Module, Linkage};
+use cranelift_module::{FuncId, Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use colored::Colorize;
-use crate::parser::ast::{Node, NodeKind};
+use crate::parser::ast::{Node, NodeKind, Param};
 use crate::operator::Operator;
 use crate::semantics::ty;
 
@@ -29,13 +29,14 @@ fn seman_err() -> ! {
     panic!("compiler pipeline may have missed semantics checker")
 }
 
-struct IRGenerator {
+struct IRGenerator<'irg> {
     module: ObjectModule,
     unit: Option<Value>,
     scope: Vec<HashMap<String, (StackSlot, Type)>>,
+    functions: HashMap<String, (Signature, FuncId, &'irg [Param], &'irg [Node])>,
 }
 
-impl IRGenerator {
+impl<'irg> IRGenerator<'irg> {
     fn new(module_name: String) -> Result<Self, String> {
         let mut builder = settings::builder();
         builder.set("opt_level", "speed_and_size")
@@ -61,54 +62,93 @@ impl IRGenerator {
         Ok(Self {
             module,
             unit: None,
-            scope: vec![HashMap::new()]
+            scope: Vec::new(),
+            functions: HashMap::new(),
         })
     }
 
-    fn cache_unit(&mut self, builder: &mut FunctionBuilder) -> Value {
-        if self.unit.is_none() {
-            self.unit = Some(builder.ins().iconst(types::I8, 0));
+    fn collect_function(&mut self, node: &'irg Node, emit_ir: bool) -> Result<(), String> {
+        match &node.kind {
+            NodeKind::FunctionDef {
+                name,
+                params,
+                ty_cache,
+                body,
+                ..
+            } => {
+                self.scope = vec![HashMap::new()];
+                self.unit = None;
+
+                let mut sig = self.module.make_signature();
+                for param in params {
+                    let vt = param.ty_cache.as_ref().unwrap_or_else(|| seman_err()).to_clif_ty();
+                    sig.params.push(AbiParam::new(vt));
+                }
+                let vt = ty_cache.as_ref().unwrap_or_else(|| seman_err()).to_clif_ty();
+                sig.returns.push(AbiParam::new(vt));
+                let func_id = self.module.declare_function(name, Linkage::Export, &sig)
+                    .map_err(|err|
+                        format!("{}: cranelift error: {err}", "error".bright_red().bold())
+                    )?;
+                self.functions.insert(name.clone(), (sig, func_id, params, body));
+            },
+            NodeKind::Semi(stmt) => self.collect_function(stmt, emit_ir)?,
+            _ => {},
         }
 
-        self.unit.unwrap()
+        Ok(())
     }
 
-    fn generate(mut self, ast: &[Node], emit_ir: bool) -> Result<Vec<u8>, String> {
-        let mut sig = self.module.make_signature();
-        sig.returns.push(AbiParam::new(types::I64));
-
-        let func_id = self.module.declare_function("main", Linkage::Export, &sig)
-            .map_err(|err|
-                format!("{}: cranelift error: {err}", "error".bright_red().bold())
-            )?;
-
-        let mut ctx = self.module.make_context();
-        ctx.func.signature = sig;
-
-        let mut builder_ctx = FunctionBuilderContext::new();
-        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
-
-        let block = builder.create_block();
-        builder.append_block_params_for_function_params(block);
-        builder.switch_to_block(block);
-        builder.seal_block(block);
-
-        let mut result = self.cache_unit(&mut builder);
+    fn generate(mut self, ast: &'irg [Node], emit_ir: bool) -> Result<Vec<u8>, String> {
         for node in ast {
-            result = self.generate_node(node, &mut builder);
-        }
-        builder.ins().return_(&[result]);
-
-        builder.finalize();
-
-        if emit_ir {
-            use colored::Colorize;
-
-            println!("{}: IR:\n{:?}", "debug".bright_cyan().bold(), ctx.func);
+            self.collect_function(node, emit_ir)?;
         }
 
-        self.module.define_function(func_id, &mut ctx).unwrap();
-        self.module.clear_context(&mut ctx);
+        for (name, (sig, func_id, params, body)) in self.functions.clone() {
+            let mut ctx = self.module.make_context();
+            ctx.func.signature = sig;
+            ctx.func.name = UserFuncName::User(UserExternalName::new(0, func_id.as_u32()));
+            let mut builder_ctx = FunctionBuilderContext::new();
+            let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+
+            let block = builder.create_block();
+            builder.append_block_params_for_function_params(block);
+            builder.switch_to_block(block);
+            builder.seal_block(block);
+        
+            let p = builder.block_params(block).to_vec();
+        
+            for (pval, param) in p.iter().zip(params.iter()) {
+                let param_ty = param.ty_cache.as_ref().unwrap_or_else(|| seman_err());
+                let ss = builder.create_sized_stack_slot(StackSlotData {
+                    kind: StackSlotKind::ExplicitSlot,
+                    size: param_ty.size(),
+                    align_shift: param_ty.align(),
+                    key: None,
+                });
+                builder.ins().stack_store(*pval, ss, 0);
+                self.scope.last_mut().unwrap().insert(param.name.clone(), (ss, param_ty.to_clif_ty()));
+            }
+
+            self.unit = Some(builder.ins().iconst(types::I8, 0));
+            let mut result = self.unit.unwrap();
+
+            for node in body {
+                result = self.generate_node(node, &mut builder);
+            }
+            builder.ins().return_(&[result]);
+
+            builder.finalize();
+
+            if emit_ir {
+                use colored::Colorize;
+
+                println!("{}: IR (function `{name}`):\n{:?}", "debug".bright_cyan().bold(), ctx.func);
+            }
+
+            self.module.define_function(func_id, &mut ctx).unwrap();
+            self.module.clear_context(&mut ctx);
+        }
 
         let obj = self.module.finish();
         let bytes = obj.emit()
@@ -163,7 +203,7 @@ impl IRGenerator {
             },
             NodeKind::Semi(stmt) => {
                 self.generate_node(stmt, builder);
-                self.cache_unit(builder)
+                self.unit.unwrap()
             },
             NodeKind::BinaryOp {
                 op,
@@ -294,7 +334,7 @@ impl IRGenerator {
                 });
                 let init = init.as_ref()
                     .map(|expr| self.generate_node(expr, builder))
-                    .unwrap_or(self.cache_unit(builder));
+                    .unwrap_or(self.unit.unwrap());
                 builder.ins().stack_store(init, ss, 0);
 
                 let ty = resolved_ty.to_clif_ty();
@@ -319,7 +359,7 @@ impl IRGenerator {
 
                 let cond_val = self.generate_node(condition, builder);
                 // unit lives on the main block so we have to pass it along
-                let unit = self.cache_unit(builder);
+                let unit = self.unit.unwrap();
                 builder.ins().brif(
                     cond_val,
                     then_block, &[BlockArg::Value(unit)],
@@ -372,7 +412,7 @@ impl IRGenerator {
                 let break_block = builder.create_block();
                 builder.append_block_param(break_block, types::I8);
 
-                let unit = self.cache_unit(builder);
+                let unit = self.unit.unwrap();
                 builder.ins().jump(
                     cond_block,
                     &[BlockArg::Value(unit)]
@@ -402,6 +442,24 @@ impl IRGenerator {
                 builder.seal_block(break_block);
                 self.unit = Some(builder.block_params(break_block)[0]);
                 self.unit.unwrap()
+            },
+            NodeKind::FunctionCall {
+                callee,
+                args
+            } => {
+                let mut compiled_args = Vec::new();
+
+                for arg in args {
+                    compiled_args.push(self.generate_node(arg, builder));
+                }
+
+                let func_id = self.functions[callee].1;
+                let func_ref = self.module.declare_func_in_func(
+                    func_id,
+                    builder.func
+                );
+                let call = builder.ins().call(func_ref, &compiled_args);
+                builder.inst_results(call)[0]
             },
             _ => todo!("{node:#?}")
         }
