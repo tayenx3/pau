@@ -5,7 +5,7 @@ def main(): int
 end
 
 def count(n: int)
-    if n < 1 then
+    if n > 0 then
         count(n - 1)
     end
 end
