@@ -20,7 +20,7 @@
 ## v0.1.0-alpha
 | Feature                                    | Status |
 | ------------------------------------------ | ------ |
-| Semantics Checker Fixes                    |   ❌   |
+| Semantics Checker Fixes                    |   🟡   |
 | Strings                                    |   ❌   |
 | I/O (and File I/O)                         |   ❌   |
 | Type conversions                           |   ❌   |

@@ -63,21 +63,26 @@ impl SemanticAnalyzer {
                 params,
                 return_ty,
                 ty_cache,
+                errored,
                 ..
             } => {
-                let mut param_tys = Vec::new();
-                for param in params {
-                    let r = self.resolve_type(&param.ty).map_err(|err| vec![err])?;
-                    param.ty_cache = Some(r.clone());
-                    param_tys.push(r);
-                }
-                let return_ty = match return_ty {
-                    Some(ty) => self.resolve_type(ty).map_err(|err| vec![err])?,
-                    None => Type::Unit,
-                };
-                *ty_cache = Some(return_ty.clone());
-                let ty = Type::Function(param_tys, Box::new(return_ty));
-                self.define_identifier(name, ty, false, node.span, InitState::Definitely);
+                (|| {
+                    let mut param_tys = Vec::new();
+                    for param in params {
+                        let r = self.resolve_type(&param.ty)?;
+                        param.ty_cache = Some(r.clone());
+                        param_tys.push(r);
+                    }
+                    let return_ty = match return_ty {
+                        Some(ty) => self.resolve_type(ty)?,
+                        None => Type::Unit,
+                    };
+                    *ty_cache = Some(return_ty.clone());
+                    let ty = Type::Function(param_tys, Box::new(return_ty));
+                    self.define_identifier(name, ty, false, node.span, InitState::Definitely);
+                    Ok::<(), Diagnostic>(())
+                })().inspect_err(|_| *errored = true)
+                .map_err(|err| vec![err])?;
             }
             NodeKind::Semi(stmt) => self.collect_function(stmt)?,
             _ => {}
@@ -109,8 +114,7 @@ impl SemanticAnalyzer {
 
         for frame in self.scope.iter().rev() {
             for symbol in &frame.symbols {
-                let score = jaro_winkler(name, &symbol.name);
-                if score == 1.0 {
+                if symbol.name == name {
                     if symbol.init_state == InitState::Nope {
                         return Err(Diagnostic {
                             path: self.path.clone(),
@@ -142,6 +146,7 @@ impl SemanticAnalyzer {
 
                     return Ok(symbol);
                 }
+                let score = jaro_winkler(name, &symbol.name);
 
                 candidate_score = candidate_score.max(score);
                 candidate = Some(symbol);
@@ -188,10 +193,10 @@ impl SemanticAnalyzer {
 
             for frame in a.scope.iter_mut().rev() {
                 for symbol in &mut frame.symbols {
-                    let score = jaro_winkler(name, &symbol.name);
-                    if score == 1.0 {
+                    if symbol.name == name {
                         return Ok(symbol);
                     }
+                    let score = jaro_winkler(name, &symbol.name);
 
                     candidate_score = candidate_score.max(score);
                     candidate = Some(&symbol.name);
@@ -654,47 +659,57 @@ impl SemanticAnalyzer {
                 params,
                 body,
                 ty_cache,
+                errored,
                 ..
             } => {
-                let mut body_ty = Type::Unit;
-                let mut errors = Vec::new();
-                self.scope.push(Scope::new(ScopeContext::Function));
+                if !*errored {
+                    let mut errors = Vec::new();
+                    self.scope.push(Scope::new(ScopeContext::Function));
 
-                for param in params {
-                    self.define_identifier(
-                        &param.name,
-                        param.ty_cache.clone().unwrap(),
-                        false,
-                        param.span,
-                        InitState::Definitely,
-                    );
+                    for param in params {
+                        self.define_identifier(
+                            &param.name,
+                            param.ty_cache.clone().unwrap(),
+                            false,
+                            param.span,
+                            InitState::Definitely,
+                        );
+                    }
+
+                    let mut body_ty = Type::Unit;
+                    for node in body {
+                        body_ty = match self.analyze_node(node) {
+                            Ok(ty) => ty,
+                            Err(err) => {
+                                errors.extend(err);
+                                body_ty
+                            }
+                        };
+                    }
+                    self.scope.pop();
+
+                    if !errors.is_empty() {
+                        return Err(errors);
+                    }
+
+                    let ret = ty_cache.as_ref().unwrap();
+
+                    if *ret != body_ty {
+                        errors.push(Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!(
+                                "function defined with return type `{ret}` but returns `{body_ty}`"
+                            ),
+                            primary_span: node.span,
+                            secondary_messages: Vec::new(),
+                        });
+                    }
+                    if !errors.is_empty() {
+                        return Err(errors);
+                    }
                 }
 
-                for node in body {
-                    body_ty = match self.analyze_node(node) {
-                        Ok(ty) => ty,
-                        Err(err) => {
-                            errors.extend(err);
-                            body_ty
-                        }
-                    };
-                }
-                self.scope.pop();
-
-                let ret = ty_cache.as_ref().unwrap();
-
-                if *ret != body_ty {
-                    errors.push(Diagnostic {
-                        path: self.path.clone(),
-                        primary_err: format!(
-                            "function defined with return type `{ret}` but returns `{body_ty}`"
-                        ),
-                        primary_span: node.span,
-                        secondary_messages: Vec::new(),
-                    });
-                }
-
-                Ok(body_ty)
+                Ok(Type::Unit)
             }
             NodeKind::FunctionCall { callee, args } => {
                 let mut errors = Vec::new();

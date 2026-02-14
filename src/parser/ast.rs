@@ -45,6 +45,7 @@ pub enum NodeKind {
         return_ty: Option<ParseType>,
         body: Vec<Node>,
         ty_cache: Option<Type>,
+        errored: bool,
     },
     FunctionCall {
         callee: String,

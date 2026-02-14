@@ -156,7 +156,7 @@ impl<'a> Parser<'a> {
         stmt_span.end = self.expect("end")?.span.end;
 
         Ok(Node {
-            kind: NodeKind::FunctionDef { name, params, return_ty, body, ty_cache: None },
+            kind: NodeKind::FunctionDef { name, params, return_ty, body, ty_cache: None, errored: false },
             span: stmt_span,
         })
     }
