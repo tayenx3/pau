@@ -126,6 +126,16 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                 lexeme: ch.to_string(),
                 span: Span { start: pos, end: pos + 1 },
             }),
+            '[' => tokens.push(Token {
+                kind: TokenKind::LBracket,
+                lexeme: ch.to_string(),
+                span: Span { start: pos, end: pos + 1 },
+            }),
+            ']' => tokens.push(Token {
+                kind: TokenKind::RBracket,
+                lexeme: ch.to_string(),
+                span: Span { start: pos, end: pos + 1 },
+            }),
             '+' => tokens.push(Token {
                 kind: TokenKind::Operator(Operator::Plus),
                 lexeme: ch.to_string(),

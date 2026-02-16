@@ -209,7 +209,6 @@ impl<'irg> IRGenerator<'irg> {
                 op,
                 lhs,
                 rhs,
-                ty_cache,
             } => {
                 if *op == Operator::Walrus {
                     if let NodeKind::Identifier(n) = &lhs.kind {
@@ -217,6 +216,23 @@ impl<'irg> IRGenerator<'irg> {
                         let (ss, _) = self.find_var(n);
                         builder.ins().stack_store(rval, ss, 0);
                         return rval;
+                    } else if let NodeKind::Index { collection, index } = &lhs.kind {
+                        let rval = self.generate_node(rhs, builder);
+
+                        let cval = self.generate_node(collection, builder);
+                        let idx_value = self.generate_node(index, builder);
+
+                        let size = builder.ins().iconst(
+                            ty::Type::UInt.to_clif_ty(),
+                            lhs.ty.as_ref().unwrap().size() as i64
+                        );
+                        let offset = builder.ins().imul(idx_value, size);
+                        let addr = builder.ins().iadd(cval, offset);
+                        builder.ins().store(MemFlags::new(), rval, addr, 0);
+                        
+                        return rval;
+                    } else {
+                        unreachable!("invalid mutation target")
                     }
                 }
                 
@@ -224,66 +240,66 @@ impl<'irg> IRGenerator<'irg> {
                 let rval = self.generate_node(rhs, builder);
 
                 match op {
-                    Operator::Plus => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Plus => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() => builder.ins().iadd(lval, rval),
                         ty if ty.is_float() => builder.ins().fadd(lval, rval),
                         _ => seman_err(),
                     },
-                    Operator::Minus => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Minus => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() => builder.ins().isub(lval, rval),
                         ty if ty.is_float() => builder.ins().fsub(lval, rval),
                         _ => seman_err(),
                     },
-                    Operator::Star => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Star => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() => builder.ins().imul(lval, rval),
                         ty if ty.is_float() => builder.ins().fmul(lval, rval),
                         _ => seman_err(),
                     },
-                    Operator::Slash => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Slash => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() && ty.is_signed() => builder.ins().sdiv(lval, rval),
                         ty if ty.is_int() && ty.is_unsigned() => builder.ins().udiv(lval, rval),
                         ty if ty.is_float() => builder.ins().fdiv(lval, rval),
                         _ => seman_err(),
                     },
-                    Operator::Modulo => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Modulo => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() && ty.is_signed() => builder.ins().srem(lval, rval),
                         ty if ty.is_int() && ty.is_unsigned() => builder.ins().urem(lval, rval),
                         ty if ty.is_float() => frem(lval, rval, builder),
                         _ => seman_err(),
                     },
-                    Operator::Eq => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Eq => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() => builder.ins().icmp(IntCC::Equal, lval, rval),
                         ty if ty.is_float() => builder.ins().fcmp(FloatCC::UnorderedOrEqual, lval, rval),
                         ty::Type::Unit => builder.ins().iconst(types::I8, 1), // () == () is always true
                         ty::Type::Bool => builder.ins().icmp(IntCC::Equal, lval, rval), // bool is i8 in CLIF
                         _ => unreachable!(),
                     },
-                    Operator::Ne => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Ne => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() => builder.ins().icmp(IntCC::NotEqual, lval, rval),
                         ty if ty.is_float() => builder.ins().fcmp(FloatCC::OrderedNotEqual, lval, rval),
                         ty::Type::Unit => builder.ins().iconst(types::I8, 0), // () != () is always false
                         ty::Type::Bool => builder.ins().icmp(IntCC::NotEqual, lval, rval), // bool is i8 in CLIF
                         _ => unreachable!(),
                     },
-                    Operator::Gt => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Gt => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() && ty.is_signed() => builder.ins().icmp(IntCC::SignedGreaterThan, lval, rval),
                         ty if ty.is_int() && ty.is_unsigned() => builder.ins().icmp(IntCC::UnsignedGreaterThan, lval, rval),
                         ty if ty.is_float() => builder.ins().fcmp(FloatCC::GreaterThan, lval, rval),
                         _ => seman_err(),
                     },
-                    Operator::Lt => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Lt => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() && ty.is_signed() => builder.ins().icmp(IntCC::SignedLessThan, lval, rval),
                         ty if ty.is_int() && ty.is_unsigned() => builder.ins().icmp(IntCC::UnsignedLessThan, lval, rval),
                         ty if ty.is_float() => builder.ins().fcmp(FloatCC::LessThan, lval, rval),
                         _ => seman_err(),
                     },
-                    Operator::Ge => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Ge => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() && ty.is_signed() => builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, lval, rval),
                         ty if ty.is_int() && ty.is_unsigned() => builder.ins().icmp(IntCC::UnsignedGreaterThanOrEqual, lval, rval),
                         ty if ty.is_float() => builder.ins().fcmp(FloatCC::UnorderedOrGreaterThanOrEqual, lval, rval),
                         _ => seman_err(),
                     },
-                    Operator::Le => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Le => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() && ty.is_signed() => builder.ins().icmp(IntCC::SignedLessThanOrEqual, lval, rval),
                         ty if ty.is_int() && ty.is_unsigned() => builder.ins().icmp(IntCC::UnsignedLessThanOrEqual, lval, rval),
                         ty if ty.is_float() => builder.ins().fcmp(FloatCC::UnorderedOrLessThanOrEqual, lval, rval),
@@ -295,22 +311,21 @@ impl<'irg> IRGenerator<'irg> {
             NodeKind::UnaryOp {
                 op,
                 operand,
-                ty_cache,
             } => {
                 let oval = self.generate_node(operand, builder);
 
                 match op {
-                    Operator::Plus => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Plus => match operand.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() => oval,
                         ty if ty.is_float() => oval,
                         _ => seman_err(),
                     },
-                    Operator::Minus => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Minus => match operand.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() => builder.ins().ineg(oval),
                         ty if ty.is_float() => builder.ins().fneg(oval),
                         _ => seman_err(),
                     },
-                    Operator::Bang => match ty_cache.as_ref().unwrap_or_else(|| seman_err()) {
+                    Operator::Bang => match operand.ty.as_ref().unwrap_or_else(|| seman_err()) {
                         ty if ty.is_int() => builder.ins().bnot(oval),
                         ty::Type::Bool => lnot(oval, builder),
                         _ => seman_err(),
@@ -321,15 +336,13 @@ impl<'irg> IRGenerator<'irg> {
             NodeKind::Declaration {
                 name,
                 ty: _,
-                resolved_ty,
                 init,
                 mutability: _,
             } => {
-                let resolved_ty = resolved_ty.as_ref().unwrap();
                 let ss = builder.create_sized_stack_slot(StackSlotData {
                     kind: StackSlotKind::ExplicitSlot,
-                    size: resolved_ty.size(),
-                    align_shift: resolved_ty.align(),
+                    size: node.ty.as_ref().unwrap().size(),
+                    align_shift: node.ty.as_ref().unwrap().align(),
                     key: None,
                 });
                 let init = init.as_ref()
@@ -337,7 +350,7 @@ impl<'irg> IRGenerator<'irg> {
                     .unwrap_or(self.unit.unwrap());
                 builder.ins().stack_store(init, ss, 0);
 
-                let ty = resolved_ty.to_clif_ty();
+                let ty = node.ty.as_ref().unwrap().to_clif_ty();
 
                 self.scope.last_mut().unwrap().insert(name.clone(), (ss, ty));
 
@@ -347,14 +360,13 @@ impl<'irg> IRGenerator<'irg> {
                 condition,
                 then_body,
                 else_body,
-                ty_cache,
             } => {
                 let then_block = builder.create_block();
                 builder.append_block_param(then_block, types::I8);
                 let else_block = builder.create_block();
                 builder.append_block_param(else_block, types::I8);
                 let merge_block = builder.create_block();
-                builder.append_block_param(merge_block, ty_cache.as_ref().unwrap_or_else(|| seman_err()).to_clif_ty());
+                builder.append_block_param(merge_block, node.ty.as_ref().unwrap_or_else(|| seman_err()).to_clif_ty());
                 builder.append_block_param(merge_block, types::I8);
 
                 let cond_val = self.generate_node(condition, builder);
@@ -461,7 +473,44 @@ impl<'irg> IRGenerator<'irg> {
                 let call = builder.ins().call(func_ref, &compiled_args);
                 builder.inst_results(call)[0]
             },
-            _ => todo!("{node:#?}")
+            NodeKind::Array(items) => {
+                let ty = node.ty.as_ref().unwrap();
+                match ty {
+                    ty::Type::Array(inner, len) => {
+                        let size = inner.size() * len.unwrap() as u32;
+                        let ss = builder.create_sized_stack_slot(StackSlotData {
+                            kind: StackSlotKind::ExplicitSlot,
+                            size,
+                            align_shift: inner.align(),
+                            key: None,
+                        });
+                        for (idx, item) in items.iter().enumerate() {
+                            let value = self.generate_node(item, builder);
+                            builder.ins().stack_store(value, ss, (inner.size() * idx as u32) as i32);
+                        }
+                        builder.ins().stack_addr(inner.to_clif_ty(), ss, 0)
+                    },
+                    _ => unreachable!()
+                }
+            },
+            NodeKind::Index {
+                collection, index
+            } => {
+                let cval = self.generate_node(collection, builder);
+                let idx_value = self.generate_node(index, builder);
+
+                let size = builder.ins().iconst(
+                    ty::Type::UInt.to_clif_ty(),
+                    node.ty.as_ref().unwrap().size() as i64
+                );
+                let offset = builder.ins().imul(idx_value, size);
+                let addr = builder.ins().iadd(cval, offset);
+                builder.ins().load(node.ty.as_ref().unwrap().to_clif_ty(), MemFlags::new(), addr, 0)
+            },
+            NodeKind::FunctionDef { .. } => self.unit.unwrap_or_else(|| {
+                self.unit = Some(builder.ins().iconst(types::I8, 0));
+                self.unit.unwrap()
+            }),
         }
     }
 }

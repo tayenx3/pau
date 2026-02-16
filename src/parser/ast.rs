@@ -15,17 +15,14 @@ pub enum NodeKind {
         op: Operator,
         lhs: Box<Node>,
         rhs: Box<Node>,
-        ty_cache: Option<Type>,
     },
     UnaryOp {
         op: Operator,
         operand: Box<Node>,
-        ty_cache: Option<Type>,
     },
     Declaration {
         name: String,
         ty: Option<ParseType>,
-        resolved_ty: Option<Type>,
         init: Option<Box<Node>>,
         mutability: bool,
     },
@@ -33,7 +30,6 @@ pub enum NodeKind {
         condition: Box<Node>,
         then_body: Vec<Node>,
         else_body: Option<Vec<Node>>,
-        ty_cache: Option<Type>,
     },
     WhileLoop {
         condition: Box<Node>,
@@ -51,6 +47,11 @@ pub enum NodeKind {
         callee: String,
         args: Vec<Node>,
     },
+    Array(Vec<Node>),
+    Index {
+        collection: Box<Node>,
+        index: Box<Node>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,4 +66,5 @@ pub struct Param {
 pub struct Node {
     pub kind: NodeKind,
     pub span: Span,
+    pub ty: Option<Type>,
 }

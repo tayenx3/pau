@@ -177,61 +177,94 @@ impl SemanticAnalyzer {
         })
     }
 
-    fn mutate_symbol(
+    fn find_identifier_mut(
         &mut self,
         name: &str,
         span: Span,
-        val: &mut Node,
-    ) -> Result<Type, Vec<Diagnostic>> {
-        fn aux<'a>(
-            a: &'a mut SemanticAnalyzer,
-            name: &str,
-            span: Span,
-        ) -> Result<&'a mut Symbol, Diagnostic> {
-            let mut candidate_score: f64 = 0.0;
-            let mut candidate = None;
+    ) -> Result<&mut Symbol, Diagnostic> {
+        let mut candidate_score: f64 = 0.0;
+        let mut candidate = None;
 
-            for frame in a.scope.iter_mut().rev() {
-                for symbol in &mut frame.symbols {
-                    if symbol.name == name {
-                        return Ok(symbol);
-                    }
-                    let score = jaro_winkler(name, &symbol.name);
-
-                    candidate_score = candidate_score.max(score);
-                    candidate = Some(&symbol.name);
+        for frame in self.scope.iter_mut().rev() {
+            for symbol in &mut frame.symbols {
+                if symbol.name == name {
+                    return Ok(symbol);
                 }
-            }
+                let score = jaro_winkler(name, &symbol.name);
 
-            if candidate_score > 0.7 {
-                return Err(Diagnostic {
-                    path: a.path.clone(),
-                    primary_err: format!("cannot find `{name}` in scope"),
-                    primary_span: span,
-                    secondary_messages: vec![(
-                        Some(format!(
-                            "{}: did you mean `{}`?",
-                            "help".bright_blue().bold(),
-                            candidate.unwrap()
-                        )),
-                        None,
-                    )],
-                });
+                candidate_score = candidate_score.max(score);
+                candidate = Some(&symbol.name);
             }
-
-            Err(Diagnostic {
-                path: a.path.clone(),
-                primary_err: format!("cannot find `{name}` in scope"),
-                primary_span: span,
-                secondary_messages: vec![],
-            })
         }
 
+        if candidate_score > 0.7 {
+            return Err(Diagnostic {
+                path: self.path.clone(),
+                primary_err: format!("cannot find `{name}` in scope"),
+                primary_span: span,
+                secondary_messages: vec![(
+                    Some(format!(
+                        "{}: did you mean `{}`?",
+                        "help".bright_blue().bold(),
+                        candidate.unwrap()
+                    )),
+                    None,
+                )],
+            });
+        }
+
+        Err(Diagnostic {
+            path: self.path.clone(),
+            primary_err: format!("cannot find `{name}` in scope"),
+            primary_span: span,
+            secondary_messages: vec![],
+        })
+    }
+
+    fn find_mutation_target(
+        &mut self,
+        node: &mut Node,
+        span: Span,
+    ) -> Result<&mut Symbol, Diagnostic> {
+        match &mut node.kind {
+            NodeKind::Identifier(n) => self.find_identifier_mut(n, span),
+            NodeKind::Index { collection, .. } => {
+                let path = self.path.clone();
+                let symbol = self.find_mutation_target(collection, collection.span)?;
+
+                if let Type::Array(inner, _) = &symbol.ty {
+                    node.ty = Some((**inner).clone());
+                } else {
+                    return Err(Diagnostic {
+                        path,
+                        primary_err: "can only index into collections".to_string(),
+                        primary_span: collection.span,
+                        secondary_messages: Vec::new(),
+                    });
+                }
+
+                Ok(symbol)
+            },
+            _ => Err(Diagnostic {
+                path: self.path.clone(),
+                primary_err: "invalid mutation target".to_string(),
+                primary_span: node.span,
+                secondary_messages: Vec::new(),
+            })
+        }
+    }
+
+    fn mutate_symbol(
+        &mut self,
+        node: &mut Node,
+        span: Span,
+        val: &mut Node,
+    ) -> Result<Type, Vec<Diagnostic>> {
         let path = self.path.clone();
 
         let mut errors = Vec::new();
 
-        let val_ty = match self.analyze_node(val) {
+        let mut val_ty = match self.analyze_node(val) {
             Ok(n) => Some(n),
             Err(e) => {
                 errors.extend(e);
@@ -241,54 +274,114 @@ impl SemanticAnalyzer {
 
         let scope_ctx = self.scope.last().unwrap().ctx;
 
-        let symbol = aux(self, name, span).map_err(|err| vec![err])?;
+        match &mut node.kind {
+            NodeKind::Identifier(name) => {
+                let symbol = self.find_identifier_mut(name, span).map_err(|err| vec![err])?;
 
-        if !symbol.mutability {
-            errors.push(Diagnostic {
-                path: path.clone(),
-                primary_err: format!("identifier `{name}` is immutable"),
-                primary_span: span,
-                secondary_messages: vec![(
-                    Some(format!(
-                        "{}: identifier defined here:",
-                        "note".bright_blue().bold()
-                    )),
-                    Some(symbol.defined_at),
-                )],
-            });
-        }
+                if !symbol.mutability {
+                    errors.push(Diagnostic {
+                        path: path.clone(),
+                        primary_err: format!("identifier `{name}` is immutable"),
+                        primary_span: span,
+                        secondary_messages: vec![(
+                            Some(format!(
+                                "{}: identifier defined here:",
+                                "note".bright_blue().bold()
+                            )),
+                            Some(symbol.defined_at),
+                        )],
+                    });
+                }
 
-        if let Some(ref val_ty) = val_ty {
-            if symbol.ty != *val_ty {
+                if let Some(ref val_type) = val_ty {
+                    if symbol.ty != *val_type {
+                        errors.push(Diagnostic {
+                            path,
+                            primary_err: format!(
+                                "identifier `{name}` is defined as `{}` but found `{val_type}`",
+                                symbol.ty,
+                            ),
+                            primary_span: span,
+                            secondary_messages: vec![(
+                                Some(format!(
+                                    "{}: identifier defined here:",
+                                    "note".bright_blue().bold()
+                                )),
+                                Some(symbol.defined_at),
+                            )],
+                        });
+                    }
+
+                    val_ty = Some(symbol.ty.clone());
+                }
+
+                if scope_ctx == ScopeContext::Conditional && symbol.init_state == InitState::Nope {
+                    symbol.init_state = InitState::Maybe;
+                }
+            },
+            NodeKind::Index {
+                index,
+                ..
+            } => {
+                let ty = self.analyze_node(index)
+                    .map_err(|err| errors.extend(err))
+                    .ok();
+                if let Some(ty) = &ty {
+                    if *ty != Type::UInt {
+                        errors.push(Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("expected uint, found `{ty}`"),
+                            primary_span: index.span,
+                            secondary_messages: Vec::new(),
+                        });
+                    }
+                }
+
+                let symbol = self.find_mutation_target(node, node.span)
+                    .map_err(|err| vec![err])?;
+                match &symbol.ty {
+                    Type::Array(inner, _) => {
+                        if let Some(ref val_type) = val_ty {
+                            if **inner != *val_type {
+                                errors.push(Diagnostic {
+                                    path,
+                                    primary_err: format!("collection has inner type `{inner}` but found `{val_type}`"),
+                                    primary_span: span,
+                                    secondary_messages: vec![(
+                                        Some(format!(
+                                            "{}: collection defined here:",
+                                            "note".bright_blue().bold()
+                                        )),
+                                        Some(symbol.defined_at),
+                                    )],
+                                });
+                            }
+                        }
+                        val_ty = Some((**inner).clone());
+
+                    },
+                    _ => errors.push(Diagnostic {
+                        path,
+                        primary_err: "invalid mutation target".to_string(),
+                        primary_span: node.span,
+                        secondary_messages: Vec::new(),
+                    }),
+                }
+            },
+            _ => {
                 errors.push(Diagnostic {
                     path,
-                    primary_err: format!(
-                        "identifier `{name}` is defined as `{}` but found `{val_ty}`",
-                        symbol.ty,
-                    ),
-                    primary_span: span,
-                    secondary_messages: vec![(
-                        Some(format!(
-                            "{}: identifier defined here:",
-                            "note".bright_blue().bold()
-                        )),
-                        Some(symbol.defined_at),
-                    )],
+                    primary_err: "invalid mutation target".to_string(),
+                    primary_span: node.span,
+                    secondary_messages: Vec::new(),
                 });
             }
-
-            symbol.ty = val_ty.clone();
-        }
-
-        if scope_ctx == ScopeContext::Conditional && symbol.init_state == InitState::Nope {
-            symbol.init_state = InitState::Maybe;
         }
 
         if errors.is_empty() {
-            Ok(val_ty.unwrap())
-        } else {
-            Err(errors)
+            return Ok(val_ty.unwrap());
         }
+        Err(errors)
     }
 
     fn resolve_type(&mut self, ty: &ParseType) -> Result<Type, Diagnostic> {
@@ -329,6 +422,12 @@ impl SemanticAnalyzer {
                     }
                 })
                 .cloned(),
+            ParseTypeKind::Array {
+                inner,
+                size
+            } => {
+                Ok(Type::Array(Box::new(self.resolve_type(inner)?), *size))
+            },
         }
     }
 
@@ -342,8 +441,9 @@ impl SemanticAnalyzer {
         }
 
         for node in ast {
-            if let Err(err) = self.analyze_node(node) {
-                errors.extend(err);
+            match self.analyze_node(node) {
+                Ok(ty) => node.ty = Some(ty),
+                Err(err) => errors.extend(err),
             }
         }
 
@@ -398,26 +498,17 @@ impl SemanticAnalyzer {
                 .map(|symbol| symbol.ty.clone())
                 .map_err(|err| vec![err]),
             NodeKind::Semi(stmt) => {
-                self.analyze_node(stmt)?;
+                let ty = self.analyze_node(stmt)?;
+                stmt.ty = Some(ty);
                 Ok(Type::Unit)
             }
             NodeKind::BinaryOp {
                 op,
                 lhs,
                 rhs,
-                ty_cache,
             } => {
                 if *op == Operator::Walrus {
-                    return if let NodeKind::Identifier(n) = &lhs.kind {
-                        self.mutate_symbol(n, node.span, rhs)
-                    } else {
-                        Err(vec![Diagnostic {
-                            path: self.path.clone(),
-                            primary_err: "can only mutate variables".to_string(),
-                            primary_span: lhs.span,
-                            secondary_messages: Vec::new(),
-                        }])
-                    };
+                    return self.mutate_symbol(lhs, node.span, rhs);
                 }
 
                 let lhs_ty = self.analyze_node(lhs)?;
@@ -434,14 +525,14 @@ impl SemanticAnalyzer {
                     }]
                 })?;
 
-                *ty_cache = Some(lhs_ty);
+                lhs.ty = Some(lhs_ty);
+                rhs.ty = Some(rhs_ty);
 
                 Ok(ty)
             }
             NodeKind::UnaryOp {
                 op,
                 operand,
-                ty_cache,
             } => {
                 let operand_ty = self.analyze_node(operand)?;
 
@@ -454,14 +545,13 @@ impl SemanticAnalyzer {
                     }]
                 })?;
 
-                *ty_cache = Some(operand_ty);
+                operand.ty = Some(operand_ty);
 
                 Ok(ty)
             }
             NodeKind::Declaration {
                 name,
                 ty,
-                resolved_ty,
                 init,
                 mutability,
             } => {
@@ -507,8 +597,6 @@ impl SemanticAnalyzer {
                 };
 
                 if let Some(final_ty) = final_ty {
-                    *resolved_ty = Some(final_ty.clone());
-
                     self.define_identifier(
                         name,
                         final_ty.clone(),
@@ -517,6 +605,9 @@ impl SemanticAnalyzer {
                         init_state,
                     );
 
+                    if let Some(init) = init {
+                        init.ty = Some(final_ty.clone());
+                    }
                     Ok(final_ty)
                 } else {
                     Err(vec![Diagnostic {
@@ -531,7 +622,6 @@ impl SemanticAnalyzer {
                 condition,
                 then_body,
                 else_body,
-                ty_cache,
             } => {
                 let mut errors = Vec::new();
                 match self.analyze_node(condition) {
@@ -553,7 +643,10 @@ impl SemanticAnalyzer {
                 self.scope.push(Scope::new(ScopeContext::Conditional));
                 for node in &mut *then_body {
                     then_ty = match self.analyze_node(node) {
-                        Ok(ty) => Some(ty),
+                        Ok(ty) => {
+                            node.ty = Some(ty.clone());
+                            Some(ty)
+                        },
                         Err(err) => {
                             errors.extend(err);
                             None
@@ -575,7 +668,10 @@ impl SemanticAnalyzer {
 
                         for node in &mut *else_body {
                             else_ty = match self.analyze_node(node) {
-                                Ok(ty) => Some(ty),
+                                Ok(ty) => {
+                                    node.ty = Some(ty.clone());
+                                    Some(ty)
+                                },
                                 Err(err) => {
                                     errors.extend(err);
                                     None
@@ -617,8 +713,6 @@ impl SemanticAnalyzer {
                     }
                 }
 
-                *ty_cache = Some(then_ty.clone());
-
                 if errors.is_empty() {
                     Ok(then_ty)
                 } else {
@@ -643,8 +737,9 @@ impl SemanticAnalyzer {
 
                 self.scope.push(Scope::new(ScopeContext::Conditional));
                 for node in body {
-                    if let Err(e) = self.analyze_node(node) {
-                        errors.extend(e);
+                    match self.analyze_node(node) {
+                        Ok(ty) => node.ty = Some(ty),
+                        Err(err) => errors.extend(err),
                     }
                 }
                 self.scope.pop();
@@ -679,7 +774,10 @@ impl SemanticAnalyzer {
                     let mut body_ty = Type::Unit;
                     for node in body {
                         body_ty = match self.analyze_node(node) {
-                            Ok(ty) => ty,
+                            Ok(ty) => {
+                                node.ty = Some(ty.clone());
+                                ty
+                            },
                             Err(err) => {
                                 errors.extend(err);
                                 body_ty
@@ -718,7 +816,10 @@ impl SemanticAnalyzer {
 
                 for arg in args {
                     match self.analyze_node(arg) {
-                        Ok(expr) => arg_tys.push(expr),
+                        Ok(expr) => {
+                            arg.ty = Some(expr.clone());
+                            arg_tys.push(expr)
+                        },
                         Err(e) => errors.extend(e),
                     }
                 }
@@ -778,7 +879,68 @@ impl SemanticAnalyzer {
                 }
 
                 return Err(errors);
-            }
+            },
+            NodeKind::Array(items) => {
+                let mut infer_spans = Vec::new();
+                let mut item_type = None;
+                for item in &mut *items {
+                    let ty = self.analyze_node(item)?;
+                    item.ty = Some(ty.clone());
+                    if let Some(item_ty) = item_type {
+                        if ty != item_ty {
+                            let mut secondary_messages: Vec<(Option<String>, Option<Span>)> = infer_spans.iter().map(|&x| (None, Some(x))).collect();
+                            secondary_messages[0].0 = Some(format!("{}: type `{item_ty}` inferred here:", "note".bright_blue().bold()));
+                            return Err(vec![Diagnostic {
+                                path: self.path.clone(),
+                                primary_err: format!("mismatched types `{item_ty}` and `{ty}`"),
+                                primary_span: item.span,
+                                secondary_messages
+                            }]);
+                        }
+                    }
+                    item_type = Some(ty);
+                    infer_spans.push(item.span);
+                }
+
+                Ok(Type::Array(Box::new(item_type.unwrap_or(Type::Unknown)), Some(items.len())))
+            },
+            NodeKind::Index {
+                collection,
+                index,
+            } => {
+                let mut errors = Vec::new();
+                let collection_ty = self.analyze_node(collection)?;
+                let ty = self.analyze_node(index)
+                    .map_err(|err| errors.extend(err))
+                    .ok();
+                if let Some(ty) = &ty {
+                    if *ty != Type::UInt {
+                        errors.push(Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("expected uint, found `{ty}`"),
+                            primary_span: index.span,
+                            secondary_messages: Vec::new(),
+                        });
+                    }
+                }
+                match collection_ty {
+                    Type::Array(inner, _) => {
+                        if let Some(ty) = ty {
+                            if ty == Type::UInt {
+                                return Ok(*inner);
+                            }
+                        }
+                    },
+                    _ => errors.push(Diagnostic {
+                        path: self.path.clone(),
+                        primary_err: "can only index into collections".to_string(),
+                        primary_span: collection.span,
+                        secondary_messages: Vec::new(),
+                    }),
+                }
+
+                return Err(errors);
+            },
         }
     }
 }

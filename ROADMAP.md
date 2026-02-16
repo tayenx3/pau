@@ -24,5 +24,6 @@
 | Strings                                    |   ❌   |
 | I/O (and File I/O)                         |   ❌   |
 | Type conversions                           |   ❌   |
-| Arrays                                     |   ❌   |
+| Arrays                                     |   ✅   |
+| Structs                                    |   ❌   |
 | Memory Management with Pointers (probably) |   ❌   |
