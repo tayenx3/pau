@@ -18,12 +18,12 @@
 | Functions (`def`)                                  |   ✅   |
 
 ## v0.1.0-alpha
-| Feature                                    | Status |
-| ------------------------------------------ | ------ |
-| Semantics Checker Fixes                    |   🟡   |
-| Strings                                    |   ❌   |
-| I/O (and File I/O)                         |   ❌   |
-| Type conversions                           |   ❌   |
-| Arrays                                     |   ✅   |
-| Structs                                    |   ❌   |
-| Memory Management with Pointers (probably) |   ❌   |
+| Feature                                | Status |
+| -------------------------------------- | ------ |
+| Semantics Checker Fixes                |   🟡   |
+| Strings                                |   ❌   |
+| I/O (and File I/O)                     |   ❌   |
+| Type conversions                       |   ❌   |
+| Arrays                                 |   ✅   |
+| Structs                                |   ❌   |
+| Module System + Small Standard Library |   ❌   |
