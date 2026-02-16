@@ -37,7 +37,7 @@ impl<'a> Parser<'a> {
                 Err(Diagnostic {
                     path: self.path.clone(),
                     primary_err: format!("expected `{expected}`, found {tok}"),
-                    primary_span: self.tokens.last().unwrap().span.splat_to_end(),
+                    primary_span: tok.span,
                     secondary_messages: Vec::new(),
                 })
             },
@@ -60,7 +60,7 @@ impl<'a> Parser<'a> {
                 Err(Diagnostic {
                     path: self.path.clone(),
                     primary_err: format!("expected identifier, found {tok}"),
-                    primary_span: self.tokens.last().unwrap().span.splat_to_end(),
+                    primary_span: tok.span,
                     secondary_messages: Vec::new(),
                 })
             },
@@ -72,24 +72,24 @@ impl<'a> Parser<'a> {
             }),
         }
     }
-
-    fn expect_uint(&mut self) -> Result<&Token, Diagnostic> {
+    
+    fn expect_int(&mut self) -> Result<&Token, Diagnostic> {
         match self.tokens.get(self.pos) {
-            Some(tok) if matches!(tok.kind, TokenKind::UnsignedInt(_)) => {
+            Some(tok) if matches!(tok.kind, TokenKind::Integer(_)) => {
                 self.pos += 1;
                 Ok(tok)
             },
             Some(tok) => {
                 Err(Diagnostic {
                     path: self.path.clone(),
-                    primary_err: format!("expected identifier, found {tok}"),
-                    primary_span: self.tokens.last().unwrap().span.splat_to_end(),
+                    primary_err: format!("expected uint, found {tok}"),
+                    primary_span: tok.span,
                     secondary_messages: Vec::new(),
                 })
             },
             None => return Err(Diagnostic {
                 path: self.path.clone(),
-                primary_err: format!("expected identifier, found end of input"),
+                primary_err: format!("expected uint, found end of input"),
                 primary_span: self.tokens.last().unwrap().span.splat_to_end(),
                 secondary_messages: Vec::new(),
             }),
@@ -586,8 +586,8 @@ impl<'a> Parser<'a> {
                 self.pos += 1;
                 let inner = Box::new(self.parse_type()?);
                 let size = if self.expect(TokenKind::Semicolon).is_ok() {
-                    if let TokenKind::UnsignedInt(n) = self.expect_uint()?.kind {
-                        Some(n)
+                    if let TokenKind::Integer(n) = self.expect_int()?.kind {
+                        Some(n as usize)
                     } else {
                         None
                     }
@@ -602,7 +602,7 @@ impl<'a> Parser<'a> {
             }
             _ => Err(Diagnostic {
                 path: self.path.clone(),
-                primary_err: format!("expected expression, found {}", tok),
+                primary_err: format!("expected type, found {}", tok),
                 primary_span: tok.span,
                 secondary_messages: Vec::new(),
             }),

@@ -15,6 +15,8 @@ use std::collections::HashMap;
 use symbol::{InitState, Symbol};
 use ty::Type;
 
+const CANDIDATE_SCORE_THRESHOLD: f64 = 0.8;
+
 use strsim::jaro_winkler;
 
 pub fn analyze(path: &str, ast: &mut [Node], source_len: usize) -> Result<(), Vec<Diagnostic>> {
@@ -153,7 +155,7 @@ impl SemanticAnalyzer {
             }
         }
 
-        if candidate_score > 0.7 {
+        if candidate_score > CANDIDATE_SCORE_THRESHOLD {
             return Err(Diagnostic {
                 path: self.path.clone(),
                 primary_err: format!("cannot find `{name}` in scope"),
@@ -197,7 +199,7 @@ impl SemanticAnalyzer {
             }
         }
 
-        if candidate_score > 0.7 {
+        if candidate_score > CANDIDATE_SCORE_THRESHOLD {
             return Err(Diagnostic {
                 path: self.path.clone(),
                 primary_err: format!("cannot find `{name}` in scope"),
@@ -398,7 +400,7 @@ impl SemanticAnalyzer {
                         candidate_score = candidate_score.max(score);
                         candidate = Some(name);
                     }
-                    if candidate_score > 0.7 {
+                    if candidate_score > CANDIDATE_SCORE_THRESHOLD {
                         Diagnostic {
                             path: self.path.clone(),
                             primary_err: format!("unknown identifier type `{n}`"),
@@ -814,7 +816,7 @@ impl SemanticAnalyzer {
 
                 let mut arg_tys = Vec::new();
 
-                for arg in args {
+                for arg in &mut *args {
                     match self.analyze_node(arg) {
                         Ok(expr) => {
                             arg.ty = Some(expr.clone());
@@ -848,12 +850,12 @@ impl SemanticAnalyzer {
                                     return Err(errors);
                                 }
 
-                                for (arg_idx, (a, p)) in param_tys.iter().zip(arg_tys).enumerate() {
-                                    if *a != p {
+                                for (arg_idx, (a, p)) in arg_tys.iter().zip(param_tys).enumerate() {
+                                    if *a != *p {
                                         errors.push(Diagnostic {
                                             path: self.path.clone(),
-                                            primary_err: format!("parameter #{arg_idx} expects `{p}` but found `{a}`"),
-                                            primary_span: node.span,
+                                            primary_err: format!("`{callee}`'s parameter #{} expects `{p}` but found `{a}`", arg_idx + 1),
+                                            primary_span: args[arg_idx].span,
                                             secondary_messages: Vec::new(),
                                         })
                                     }

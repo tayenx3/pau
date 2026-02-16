@@ -57,7 +57,7 @@ impl Type {
 
     pub fn to_clif_ty(&self) -> cranelift::prelude::Type {
         match self {
-            Self::Int | Self::UInt | Self::Function(_, _) => match size_of::<usize>() {
+            Self::Int | Self::UInt | Self::Function(_, _) | Self::Array(_, _) => match size_of::<usize>() {
                 4 => types::I32,
                 8 => types::I64,
                 _ => unreachable!()
@@ -73,7 +73,6 @@ impl Type {
             Self::I64 | Self::U64 => types::I64,
             Self::F32 => types::F32,
             Self::F64 => types::F64,
-            Self::Array(inner, _) => inner.to_clif_ty(),
         }
     }
 

@@ -488,7 +488,7 @@ impl<'irg> IRGenerator<'irg> {
                             let value = self.generate_node(item, builder);
                             builder.ins().stack_store(value, ss, (inner.size() * idx as u32) as i32);
                         }
-                        builder.ins().stack_addr(inner.to_clif_ty(), ss, 0)
+                        builder.ins().stack_addr(ty::Type::Int.to_clif_ty(), ss, 0)
                     },
                     _ => unreachable!()
                 }
