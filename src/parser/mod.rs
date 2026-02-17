@@ -117,7 +117,7 @@ impl<'a> Parser<'a> {
             }),
         };
 
-        match &tok.kind {
+        let mut item = match &tok.kind {
             TokenKind::Def => self.parse_def(),
             TokenKind::Const => self.parse_const(),
             _ => Err(Diagnostic {
@@ -126,7 +126,16 @@ impl<'a> Parser<'a> {
                 primary_span: tok.span,
                 secondary_messages: Vec::new(),
             }),
+        }?;
+        if let Ok(Token { span, .. }) = self.expect(TokenKind::Semicolon) {
+            let span = item.span.connect(span);
+            item = Node {
+                kind: NodeKind::Semi(Box::new(item)),
+                span,
+                ty: None,
+            };
         }
+        Ok(item)
     }
 
     fn parse_def(&mut self) -> Result<Node, Diagnostic> {

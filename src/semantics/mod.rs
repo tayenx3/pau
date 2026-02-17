@@ -215,7 +215,7 @@ impl SemanticAnalyzer {
         mutability: bool,
         defined_at: Span,
         init_state: InitState,
-        const_val: Option<Node>,
+        const_val: Option<NodeKind>,
     ) {
         self.scope.last_mut().unwrap().insert(Symbol {
             name: name.to_string(),
@@ -767,7 +767,7 @@ impl SemanticAnalyzer {
                 .find_identifier(n, node.span)
                 .map(|symbol| {
                     if let Some(expr) = &symbol.const_val {
-                        *node = expr.clone();
+                        node.kind = expr.clone();
                     }
                     symbol.ty.clone()
                 })
@@ -1296,9 +1296,14 @@ impl SemanticAnalyzer {
                         }]);
                     }
                 }
-                let mut value = *value.clone();
-                value.span = node.span;
-                self.define_identifier(name, value_ty, false, node.span, InitState::Definitely, Some(value));
+                self.define_identifier(
+                    name,
+                    value_ty,
+                    false,
+                    node.span,
+                    InitState::Definitely,
+                    Some(value.kind.clone())
+                );
                 Ok(Type::Unit)
             }
         }
