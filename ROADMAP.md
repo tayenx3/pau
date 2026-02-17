@@ -22,8 +22,18 @@
 | -------------------------------------- | ------ |
 | Semantics Checker Fixes                |   🟡   |
 | Strings                                |   ❌   |
-| I/O (and File I/O)                     |   ❌   |
 | Type conversions                       |   ❌   |
 | Arrays                                 |   ✅   |
 | Structs                                |   ✅   |
 | Module System + Small Standard Library |   ❌   |
+
+## v0.1.0-beta
+| Feature            | Status |
+| ------------------ | ------ |
+| I/O (and File I/O) |   ❌   |
+| Memory Management  |   ❌   |
+
+## v0.1.0-rc1
+| Feature                  | Status |
+| ------------------------ | ------ |
+| Major Codebase Refactors |   ❌   |
