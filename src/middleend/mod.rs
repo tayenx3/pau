@@ -16,13 +16,13 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 use colored::Colorize;
 use crate::parser::ast::{Node, NodeKind, Param};
 use crate::operator::Operator;
-use crate::semantics::ty;
+use crate::semantics::{ty, StructData, StructID};
 
-pub fn generate_obj(path: &str, ast: &[Node], emit_ir: bool) -> Result<Vec<u8>, String> {
+pub fn generate_obj(path: &str, ast: &[Node], emit_ir: bool, ids: HashMap<String, StructID>, structs: HashMap<StructID, StructData>) -> Result<Vec<u8>, String> {
     use std::path::Path;
 
     let module_name = Path::new(path).file_stem().unwrap().display().to_string();
-    IRGenerator::new(module_name)?.generate(ast, emit_ir)
+    IRGenerator::new(module_name, ids, structs)?.generate(ast, emit_ir)
 }
 
 fn seman_err() -> ! {
@@ -34,10 +34,12 @@ struct IRGenerator<'irg> {
     unit: Option<Value>,
     scope: Vec<HashMap<String, (StackSlot, Type)>>,
     functions: HashMap<String, (Signature, FuncId, &'irg [Param], &'irg [Node])>,
+    ids: HashMap<String, StructID>,
+    structs: HashMap<StructID, StructData>,
 }
 
 impl<'irg> IRGenerator<'irg> {
-    fn new(module_name: String) -> Result<Self, String> {
+    fn new(module_name: String, ids: HashMap<String, StructID>, structs: HashMap<StructID, StructData>) -> Result<Self, String> {
         let mut builder = settings::builder();
         builder.set("opt_level", "speed_and_size")
             .map_err(|err|
@@ -64,6 +66,8 @@ impl<'irg> IRGenerator<'irg> {
             unit: None,
             scope: Vec::new(),
             functions: HashMap::new(),
+            ids,
+            structs
         })
     }
 
@@ -122,8 +126,8 @@ impl<'irg> IRGenerator<'irg> {
                 let param_ty = param.ty_cache.as_ref().unwrap_or_else(|| seman_err());
                 let ss = builder.create_sized_stack_slot(StackSlotData {
                     kind: StackSlotKind::ExplicitSlot,
-                    size: param_ty.size(),
-                    align_shift: param_ty.align(),
+                    size: param_ty.size(&self.structs),
+                    align_shift: param_ty.align(&self.structs),
                     key: None,
                 });
                 builder.ins().stack_store(*pval, ss, 0);
@@ -211,29 +215,40 @@ impl<'irg> IRGenerator<'irg> {
                 rhs,
             } => {
                 if *op == Operator::Walrus {
+                    let rval = self.generate_node(rhs, builder);
+
                     if let NodeKind::Identifier(n) = &lhs.kind {
-                        let rval = self.generate_node(rhs, builder);
                         let (ss, _) = self.find_var(n);
                         builder.ins().stack_store(rval, ss, 0);
-                        return rval;
                     } else if let NodeKind::Index { collection, index } = &lhs.kind {
-                        let rval = self.generate_node(rhs, builder);
-
                         let cval = self.generate_node(collection, builder);
                         let idx_value = self.generate_node(index, builder);
 
                         let size = builder.ins().iconst(
                             ty::Type::UInt.to_clif_ty(),
-                            lhs.ty.as_ref().unwrap().size() as i64
+                            lhs.ty.as_ref().unwrap().size(&self.structs) as i64
                         );
                         let offset = builder.ins().imul(idx_value, size);
                         let addr = builder.ins().iadd(cval, offset);
                         builder.ins().store(MemFlags::new(), rval, addr, 0);
-                        
-                        return rval;
+                    } else if let NodeKind::FieldAccess { object, field, id } = &lhs.kind {
+                        let oval = self.generate_node(object, builder);
+                        let data = &self.structs[&id.unwrap()];
+                        let mut current_offset = 0;
+                        for (name, ty) in &data.fields {
+                            let align = ty.align(&self.structs) as usize;
+                            let padding = (align - (current_offset % align)) % align;
+                            current_offset += padding;
+
+                            if field.0 == *name { break }
+                            current_offset += ty.size(&self.structs) as usize;
+                        }
+                        builder.ins().store(MemFlags::new(), rval, oval, current_offset as i32);
                     } else {
                         unreachable!("invalid mutation target")
                     }
+                    
+                    return rval;
                 }
                 
                 let lval = self.generate_node(lhs, builder);
@@ -341,8 +356,8 @@ impl<'irg> IRGenerator<'irg> {
             } => {
                 let ss = builder.create_sized_stack_slot(StackSlotData {
                     kind: StackSlotKind::ExplicitSlot,
-                    size: node.ty.as_ref().unwrap().size(),
-                    align_shift: node.ty.as_ref().unwrap().align(),
+                    size: node.ty.as_ref().unwrap().size(&self.structs),
+                    align_shift: node.ty.as_ref().unwrap().align(&self.structs),
                     key: None,
                 });
                 let init = init.as_ref()
@@ -459,34 +474,59 @@ impl<'irg> IRGenerator<'irg> {
                 callee,
                 args
             } => {
-                let mut compiled_args = Vec::new();
+                if let Some(id) = self.ids.get(callee) {
+                    let data = self.structs.get(id).unwrap().clone();
+                    let ty = ty::Type::Struct(*id, callee.clone());
+                    let ss = builder.create_sized_stack_slot(StackSlotData {
+                        kind: StackSlotKind::ExplicitSlot,
+                        size: ty.size(&self.structs),
+                        align_shift: ty.align(&self.structs),
+                        key: None
+                    });
+                    
+                    let mut current_offset = 0;
+                    for (field, (_, ty)) in args.iter().zip(data.fields) {
+                        let align = ty.align(&self.structs) as usize;
+                        let padding = (align - (current_offset % align)) % align;
+                        current_offset += padding;
+                        
+                        let value = self.generate_node(field, builder);
+                        builder.ins().stack_store(value, ss, current_offset as i32);
+                        
+                        current_offset += ty.size(&self.structs) as usize;
+                    }
+                    
+                    builder.ins().stack_addr(ty::Type::Int.to_clif_ty(), ss, 0)
+                } else {
+                    let mut compiled_args = Vec::new();
 
-                for arg in args {
-                    compiled_args.push(self.generate_node(arg, builder));
+                    for arg in args {
+                        compiled_args.push(self.generate_node(arg, builder));
+                    }
+
+                    let func_id = self.functions[callee].1;
+                    let func_ref = self.module.declare_func_in_func(
+                        func_id,
+                        builder.func
+                    );
+                    let call = builder.ins().call(func_ref, &compiled_args);
+                    builder.inst_results(call)[0]
                 }
-
-                let func_id = self.functions[callee].1;
-                let func_ref = self.module.declare_func_in_func(
-                    func_id,
-                    builder.func
-                );
-                let call = builder.ins().call(func_ref, &compiled_args);
-                builder.inst_results(call)[0]
             },
             NodeKind::Array(items) => {
                 let ty = node.ty.as_ref().unwrap();
                 match ty {
                     ty::Type::Array(inner, len) => {
-                        let size = inner.size() * len.unwrap() as u32;
+                        let size = inner.size(&self.structs) * len.unwrap() as u32;
                         let ss = builder.create_sized_stack_slot(StackSlotData {
                             kind: StackSlotKind::ExplicitSlot,
                             size,
-                            align_shift: inner.align(),
+                            align_shift: inner.align(&self.structs),
                             key: None,
                         });
                         for (idx, item) in items.iter().enumerate() {
                             let value = self.generate_node(item, builder);
-                            builder.ins().stack_store(value, ss, (inner.size() * idx as u32) as i32);
+                            builder.ins().stack_store(value, ss, (inner.size(&self.structs) * idx as u32) as i32);
                         }
                         builder.ins().stack_addr(ty::Type::Int.to_clif_ty(), ss, 0)
                     },
@@ -501,16 +541,36 @@ impl<'irg> IRGenerator<'irg> {
 
                 let size = builder.ins().iconst(
                     ty::Type::UInt.to_clif_ty(),
-                    node.ty.as_ref().unwrap().size() as i64
+                    node.ty.as_ref().unwrap().size(&self.structs) as i64
                 );
                 let offset = builder.ins().imul(idx_value, size);
                 let addr = builder.ins().iadd(cval, offset);
                 builder.ins().load(node.ty.as_ref().unwrap().to_clif_ty(), MemFlags::new(), addr, 0)
             },
-            NodeKind::FunctionDef { .. } => self.unit.unwrap_or_else(|| {
+            NodeKind::FunctionDef { .. } | NodeKind::StructDef { .. } => self.unit.unwrap_or_else(|| {
                 self.unit = Some(builder.ins().iconst(types::I8, 0));
                 self.unit.unwrap()
             }),
+            NodeKind::FieldAccess { object, field, id } => {
+                let value = self.generate_node(object, builder);
+                let data = &self.structs[&id.unwrap()];
+                let mut current_offset = 0;
+                for (name, ty) in &data.fields {
+                    let align = ty.align(&self.structs) as usize;
+                    let padding = (align - (current_offset % align)) % align;
+                    current_offset += padding;
+
+                    if field.0 == *name { break }
+                    current_offset += ty.size(&self.structs) as usize;
+                }
+
+                builder.ins().load(
+                    node.ty.as_ref().unwrap().to_clif_ty(),
+                    MemFlags::new(),
+                    value,
+                    current_offset as i32
+                )
+            },
         }
     }
 }

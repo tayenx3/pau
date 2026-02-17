@@ -1,5 +1,6 @@
 use super::ty::ParseType;
 use crate::operator::Operator;
+use crate::semantics::StructID;
 use crate::semantics::ty::Type;
 use crate::span::Span;
 
@@ -52,6 +53,15 @@ pub enum NodeKind {
         collection: Box<Node>,
         index: Box<Node>,
     },
+    StructDef {
+        name: String,
+        fields: Box<[Param]>,
+    },
+    FieldAccess {
+        object: Box<Node>,
+        field: (String, Span),
+        id: Option<StructID>,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

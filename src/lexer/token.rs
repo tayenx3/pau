@@ -14,7 +14,7 @@ pub enum TokenKind {
     True, False,
     LParen, RParen, LBracket, RBracket,
     Assign,
-    Colon, Comma, Semicolon,
+    Colon, Comma, Semicolon, Dot,
 }
 
 impl fmt::Display for TokenKind {
@@ -54,6 +54,7 @@ impl fmt::Display for TokenKind {
             Self::Colon => write!(f, ":"),
             Self::Comma => write!(f, ","),
             Self::Semicolon => write!(f, ";"),
+            Self::Dot => write!(f, "."),
         }
     }
 }

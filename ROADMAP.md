@@ -25,5 +25,5 @@
 | I/O (and File I/O)                     |   ❌   |
 | Type conversions                       |   ❌   |
 | Arrays                                 |   ✅   |
-| Structs                                |   ❌   |
+| Structs                                |   ✅   |
 | Module System + Small Standard Library |   ❌   |

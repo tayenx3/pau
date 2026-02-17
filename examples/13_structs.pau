@@ -1,0 +1,12 @@
+def MyStruct
+    a: i32,
+    b: int,
+    c: u8,
+end
+
+def main(): int
+    var myStruct = MyStruct(10i32, -15, 8u8);
+    myStruct.b := 24;
+
+    myStruct.b
+end

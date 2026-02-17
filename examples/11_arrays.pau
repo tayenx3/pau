@@ -1,6 +1,6 @@
 def main(): int
-    var my_array = [10, 12, 7];
-    my_array[2u] := 15; /: comment this out to get 7
+    var myArray = [10, 12, 7];
+    myArray[2u] := 15; /: comment this out to get 7
 
-    my_array[2u] /: should be 15
+    myArray[2u] /: should be 15
 end

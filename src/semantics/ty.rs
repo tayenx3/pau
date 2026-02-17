@@ -1,5 +1,8 @@
-use std::fmt;
+use std::{collections::HashMap, fmt};
 use cranelift::prelude::types;
+use crate::semantics::StructData;
+
+use super::StructID;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -10,6 +13,7 @@ pub enum Type {
     Function(Vec<Type>, Box<Type>),
     Array(Box<Type>, Option<usize>),
     Unit,
+    Struct(StructID, String),
 }
 
 impl Type {
@@ -57,7 +61,8 @@ impl Type {
 
     pub fn to_clif_ty(&self) -> cranelift::prelude::Type {
         match self {
-            Self::Int | Self::UInt | Self::Function(_, _) | Self::Array(_, _) => match size_of::<usize>() {
+            Self::Int | Self::UInt | Self::Function(_, _)
+            | Self::Array(_, _)  | Self::Struct(_, _) => match size_of::<usize>() {
                 4 => types::I32,
                 8 => types::I64,
                 _ => unreachable!()
@@ -76,7 +81,7 @@ impl Type {
         }
     }
 
-    pub fn size(&self) -> u32 {
+    pub fn size(&self, structs: &HashMap<StructID, StructData>) -> u32 {
         match self {
             Self::Int | Self::UInt | Self::Function(_, _) | Self::Float => size_of::<usize>() as u32,
             Self::I8 | Self::U8 | Self::Unit | Self::Unknown | Self::Bool => 1,
@@ -84,17 +89,34 @@ impl Type {
             Self::I32 | Self::U32 | Self::F32 => 4,
             Self::I64 | Self::U64 | Self::F64 => 8,
             Self::Array(inner, size) => if let Some(size) = size {
-                inner.size() * *size as u32
+                inner.size(structs) * *size as u32
             } else {
-                unreachable!("unsized type")
-            }
+                unreachable!("unsized type") // handled by semantics checker
+            },
+            Self::Struct(id, _) => {
+                let s = &structs[id];
+                let mut total = 0;
+                for (offset, (_, field)) in s.fields.iter().enumerate() {
+                    total += field.size(structs);
+                    let align = field.align(structs) as usize;
+                    total += ((align - (offset % align)) % align) as u32;
+                }
+                total
+            },
         }
     }
 
-    pub fn align(&self) -> u8 {
+    pub fn align(&self, structs: &HashMap<StructID, StructData>) -> u8 {
         match self {
-            Self::Array(inner, _) => inner.align(),
-            _ => self.size() as u8,
+            Self::Array(inner, _) => inner.align(structs),
+            Self::Struct(id, _) => {
+                let data = &structs[id];
+                data.fields.iter()
+                    .map(|(_, ty)| ty.align(structs))
+                    .max()
+                    .unwrap_or(1)
+            },
+            _ => self.size(structs) as u8,
         }
     }
 }
@@ -138,6 +160,7 @@ impl fmt::Display for Type {
                     .unwrap_or("".to_string())
             ),
             Self::Unknown => write!(f, "<unknown>"),
+            Self::Struct(_, name) => write!(f, "{}", name),
         }
     }
 }

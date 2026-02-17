@@ -1,31 +1,31 @@
 /: note: i dont actually understand any of this math, i just wanted to use it as a demo
 
 def main(): int
-    let pmat = projection_matrix(deg_to_rad(75.0f32), 0.1f32, 1000.0f32);
+    let pmat = projectionMatrix(degToRad(75.0f32), 0.1f32, 1000.0f32);
 
     0 /: the calculation works(?)
     /: we dont know until i add I/O lol
 end
 
-def projection_matrix(fov_rad: f32, z_near: f32, z_far: f32): [[f32; 4]; 4]
-    let half_fov = fov_rad / 2.0f32;
-    let tan_half_fov = tan_approx(half_fov);
-    let zoom = 1.0f32 / tan_half_fov;
+def projectionMatrix(fovRad: f32, zNear: f32, zFar: f32): [[f32; 4]; 4]
+    let halfFov = fovRad / 2.0f32;
+    let tanHalfFov = tan_approx(halfFov);
+    let zoom = 1.0f32 / tanHalfFov;
     
-    let q = z_far - z_near;
+    let q = zFar - zNear;
     [
         [zoom,    0.0f32,  0.0f32,                     0.0f32                          ],
         [0.0f32,  zoom,    0.0f32,                     0.0f32                          ],
-        [0.0f32,  0.0f32,  -((z_far + z_near) / q),    -((2.0f32 * z_near * z_far) / q)],
+        [0.0f32,  0.0f32,  -((zFar + zNear) / q),    -((2.0f32 * zNear * zFar) / q)],
         [0.0f32,  0.0f32,  -1.0f32,                    0.0f32                          ],
     ]
 end
 
-def tan_approx(x: f32): f32
-    sin_approx(x) / cos_approx(x)
+def tanApprox(x: f32): f32
+    sinApprox(x) / cosApprox(x)
 end
 
-def sin_approx(x: f32): f32
+def sinApprox(x: f32): f32
     let x2 = x * x;
     let x3 = x2 * x;
     let x5 = x3 * x2;
@@ -34,7 +34,7 @@ def sin_approx(x: f32): f32
     x - x3/6.0f32 + x5/120.0f32 - x7/5040.0f32
 end
 
-def cos_approx(x: f32): f32
+def cosApprox(x: f32): f32
     let x2 = x * x;
     let x4 = x2 * x2;
     let x6 = x4 * x2;
@@ -42,6 +42,6 @@ def cos_approx(x: f32): f32
     1.0f32 - x2/2.0f32 + x4/24.0f32 - x6/720.0f32
 end
 
-def deg_to_rad(deg: f32): f32
+def degToRad(deg: f32): f32
     deg * (3.14159f32 / 180.0f32)
 end

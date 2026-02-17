@@ -11,7 +11,7 @@ use crate::parser::ty::{ParseType, ParseTypeKind};
 use crate::span::Span;
 use colored::Colorize;
 use scope::{Scope, ScopeContext};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use symbol::{InitState, Symbol};
 use ty::Type;
 
@@ -19,16 +19,28 @@ const CANDIDATE_SCORE_THRESHOLD: f64 = 0.8;
 
 use strsim::jaro_winkler;
 
-pub fn analyze(path: &str, ast: &mut [Node], source_len: usize) -> Result<(), Vec<Diagnostic>> {
+pub fn analyze(path: &str, ast: &mut [Node], source_len: usize) -> Result<SemanticAnalyzer, Vec<Diagnostic>> {
     let mut analyzer = SemanticAnalyzer::new(path, source_len);
-    analyzer.analyze(ast)
+    analyzer.analyze(ast)?;
+    Ok(analyzer)
 }
 
-struct SemanticAnalyzer {
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
+pub struct StructID(pub u32);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructData {
+    pub fields: Box<[(String, Type)]>,
+}
+
+pub struct SemanticAnalyzer {
     path: String,
     scope: Vec<Scope>,
     type_registry: HashMap<String, Type>,
     source_len: usize,
+    pub ids: HashMap<String, (StructID, Span)>,
+    pub structs: HashMap<StructID, Option<StructData>>,
+    next_struct_id: u32,
 }
 
 impl SemanticAnalyzer {
@@ -38,6 +50,9 @@ impl SemanticAnalyzer {
             scope: vec![Scope::new(ScopeContext::Root)],
             type_registry: HashMap::new(),
             source_len,
+            ids: HashMap::new(),
+            structs: HashMap::new(),
+            next_struct_id: 0,
         };
 
         s.type_registry.insert("int".to_string(), Type::Int);
@@ -56,6 +71,95 @@ impl SemanticAnalyzer {
         s.type_registry.insert("f64".to_string(), Type::F64);
 
         s
+    }
+
+    fn collect_struct_names(&mut self, node: &Node) -> Result<(), Diagnostic> {
+        match &node.kind {
+            NodeKind::StructDef {
+                name,
+                ..
+            } => {
+                if let Some((_, span)) = self.ids.get(name) {
+                    return Err(Diagnostic {
+                        path: self.path.clone(),
+                        primary_err: format!("duplicate struct definitions of `{name}`"),
+                        primary_span: node.span,
+                        secondary_messages: vec![(
+                            Some(format!("{}: `{name}` defined here:", "note".bright_blue().bold())),
+                            Some(*span),
+                        )]
+                    });
+                }
+                self.ids.insert(name.clone(), (StructID(self.next_struct_id), node.span));
+                self.next_struct_id += 1;
+            },
+            _ => {},
+        }
+
+        Ok(())
+    }
+
+    fn collect_struct_definitions(&mut self, node: &mut Node) -> Result<(), Vec<Diagnostic>> {
+        match &mut node.kind {
+            NodeKind::StructDef {
+                name,
+                fields,
+            } => {
+                let mut errors = Vec::new();
+                let mut resolved_fields = Vec::new();
+
+                for field in fields {
+                    let mut s: Span = Span { start: 0, end: 0}; // this value won't get used
+                    if resolved_fields.iter().any(|(n, _, sp)| {
+                        let f = *n == field.name;
+                        if f {
+                            s = *sp
+                        }
+                        f
+                    }) {
+                        errors.push(Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("duplicate field `{}`", field.name),
+                            primary_span: field.span,
+                            secondary_messages: vec![
+                                (
+                                    Some(format!("{}: field `{}` was defined here:", "note".bright_blue().bold(), field.name)),
+                                    Some(s)
+                                )
+                            ]
+                        })
+                    }
+                    match self.resolve_type(&field.ty) {
+                        Ok(ty) => resolved_fields.push((field.name.clone(), ty, field.span)),
+                        Err(err) => errors.push(err),
+                    }
+                }
+
+                let (id, _) = self.ids[name];
+                self.structs.insert(id, Some(StructData {
+                    fields: resolved_fields
+                        .clone()
+                        .into_iter()
+                        .map(|(name, ty, _)| (name, ty))
+                        .collect::<Vec<_>>()
+                        .into_boxed_slice(),
+                }));
+                let f = resolved_fields
+                    .into_iter()
+                    .map(|(_, ty, _)| ty)
+                    .collect();
+                self.define_identifier(
+                    name,
+                    Type::Function(f, Box::new(Type::Struct(id, name.to_string()))),
+                    false,
+                    node.span,
+                    InitState::Definitely,
+                );
+            },
+            _ => {},
+        }
+
+        Ok(())
     }
 
     fn collect_function(&mut self, node: &mut Node) -> Result<(), Vec<Diagnostic>> {
@@ -81,12 +185,22 @@ impl SemanticAnalyzer {
                     };
                     *ty_cache = Some(return_ty.clone());
                     let ty = Type::Function(param_tys, Box::new(return_ty));
+                    if let Ok(symbol) = self.find_identifier(name, node.span) {
+                        return Err(Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("`{name}` defined multiple times"),
+                            primary_span: node.span,
+                            secondary_messages: vec![(
+                                Some(format!("`{name}` was defined here:")),
+                                Some(symbol.defined_at),
+                            )]
+                        });
+                    }
                     self.define_identifier(name, ty, false, node.span, InitState::Definitely);
                     Ok::<(), Diagnostic>(())
                 })().inspect_err(|_| *errored = true)
                 .map_err(|err| vec![err])?;
             }
-            NodeKind::Semi(stmt) => self.collect_function(stmt)?,
             _ => {}
         }
 
@@ -341,6 +455,20 @@ impl SemanticAnalyzer {
 
                 let symbol = self.find_mutation_target(node, node.span)
                     .map_err(|err| vec![err])?;
+                if !symbol.mutability {
+                    errors.push(Diagnostic {
+                        path: path.clone(),
+                        primary_err: format!("collection is immutable"),
+                        primary_span: span,
+                        secondary_messages: vec![(
+                            Some(format!(
+                                "{}: collection defined here:",
+                                "note".bright_blue().bold()
+                            )),
+                            Some(symbol.defined_at),
+                        )],
+                    });
+                }
                 match &symbol.ty {
                     Type::Array(inner, _) => {
                         if let Some(ref val_type) = val_ty {
@@ -370,6 +498,107 @@ impl SemanticAnalyzer {
                     }),
                 }
             },
+            NodeKind::FieldAccess { object, field, id, .. } => {
+                let path = self.path.clone();
+                let symbol = self.find_mutation_target(object, object.span)
+                    .map_err(|err| vec![err])?.clone();
+
+                if let Type::Struct(sid, _) = &symbol.ty {
+                    'a: loop {
+                        *id = Some(*sid);
+                        let data = self.structs[sid].as_ref().unwrap();
+                        let mut candidate = None;
+                        let mut candidate_score = 0.0;
+                        for (name, ty) in &data.fields {
+                            if *name == field.0 {
+                                if let Some(ref val_type) = val_ty {
+                                    if ty != val_type {
+                                        errors.push(Diagnostic {
+                                            path: path.clone(),
+                                            primary_err: format!("object has field `{}` of type `{ty}` but found `{val_type}`", field.0),
+                                            primary_span: span,
+                                            secondary_messages: vec![(
+                                                Some(format!(
+                                                    "{}: object defined here:",
+                                                    "note".bright_blue().bold()
+                                                )),
+                                                Some(symbol.defined_at),
+                                            )],
+                                        });
+                                    }
+                                }
+                                val_ty = Some(ty.clone());
+                                break 'a;
+                            }
+
+                            candidate_score = jaro_winkler(name, &field.0);
+                            candidate = Some(name);
+                        }
+
+                        if candidate_score > CANDIDATE_SCORE_THRESHOLD {
+                            return Err(vec![Diagnostic {
+                                path: self.path.clone(),
+                                primary_err: format!("cannot find field `{}` in object of type `{}`", field.0, symbol.ty),
+                                primary_span: field.1,
+                                secondary_messages: vec![(
+                                    Some(format!("{}: did you mean `{}`", "help".bright_blue().bold(), candidate.unwrap())),
+                                    None
+                                ), (
+                                    Some(format!("{}: `{}` has fields:\n{}",
+                                        "note".bright_blue().bold(),
+                                        symbol.ty,
+                                        data.fields.iter()
+                                            .map(|(name, ty)| format!("\t+ {name}: {ty}"))
+                                            .collect::<Vec<_>>().join("\n")
+                                    )),
+                                    None
+                                )],
+                            }]);
+                        }
+
+                        return Err(vec![Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("cannot find field `{}` in object of type `{}`", field.0, symbol.ty),
+                            primary_span: field.1,
+                            secondary_messages: vec![(
+                                Some(format!("{}: did you mean `{}`", "help".bright_blue().bold(), candidate.unwrap())),
+                                None
+                            ), (
+                                Some(format!("{}: `{}` has fields:\n{}",
+                                    "note".bright_blue().bold(),
+                                    symbol.ty,
+                                    data.fields.iter()
+                                        .map(|(name, ty)| format!("\t+ {name}: {ty}"))
+                                        .collect::<Vec<_>>().join("\n")
+                                )),
+                                None
+                            )],
+                        }]);
+                    }
+                } else {
+                    return Err(vec![Diagnostic {
+                        path,
+                        primary_err: "can only access into object".to_string(),
+                        primary_span: object.span,
+                        secondary_messages: Vec::new(),
+                    }]);
+                }
+
+                if !symbol.mutability {
+                    errors.push(Diagnostic {
+                        path: path.clone(),
+                        primary_err: format!("object is immutable"),
+                        primary_span: span,
+                        secondary_messages: vec![(
+                            Some(format!(
+                                "{}: object defined here:",
+                                "note".bright_blue().bold()
+                            )),
+                            Some(symbol.defined_at),
+                        )],
+                    });
+                }
+            },
             _ => {
                 errors.push(Diagnostic {
                     path,
@@ -381,49 +610,61 @@ impl SemanticAnalyzer {
         }
 
         if errors.is_empty() {
-            return Ok(val_ty.unwrap());
+            let ty = val_ty.unwrap();
+            val.ty = Some(ty.clone());
+            return Ok(ty);
         }
         Err(errors)
     }
 
     fn resolve_type(&mut self, ty: &ParseType) -> Result<Type, Diagnostic> {
         match &ty.kind {
-            ParseTypeKind::Identifier(n) => self
-                .type_registry
-                .get(n)
-                .ok_or_else(|| {
-                    let mut candidate_score: f64 = 0.0;
-                    let mut candidate = None;
-                    for (name, _) in &self.type_registry {
-                        let score = jaro_winkler(n, &name);
+            ParseTypeKind::Identifier(n) => {
+                let mut candidate_score: f64 = 0.0;
+                let mut candidate = None;
+                for (name, ty) in &self.type_registry {
+                    if name == n {
+                        return Ok(ty.clone());
+                    }
+                    let score = jaro_winkler(n, &name);
 
-                        candidate_score = candidate_score.max(score);
-                        candidate = Some(name);
+                    candidate_score = candidate_score.max(score);
+                    candidate = Some(name);
+                }
+                
+                for (name, (id, _)) in &self.ids {
+                    if name == n {
+                        return Ok(Type::Struct(*id, name.clone()));
                     }
-                    if candidate_score > CANDIDATE_SCORE_THRESHOLD {
-                        Diagnostic {
-                            path: self.path.clone(),
-                            primary_err: format!("unknown identifier type `{n}`"),
-                            primary_span: ty.span,
-                            secondary_messages: vec![(
-                                Some(format!(
-                                    "{}: did you mean `{}`?",
-                                    "help".bright_blue().bold(),
-                                    candidate.unwrap()
-                                )),
-                                None,
-                            )],
-                        }
-                    } else {
-                        Diagnostic {
-                            path: self.path.clone(),
-                            primary_err: format!("unknown identifier type `{n}`"),
-                            primary_span: ty.span,
-                            secondary_messages: vec![],
-                        }
-                    }
-                })
-                .cloned(),
+                    let score = jaro_winkler(n, &name);
+
+                    candidate_score = candidate_score.max(score);
+                    candidate = Some(name);
+                }
+
+                if candidate_score > CANDIDATE_SCORE_THRESHOLD {
+                    Err(Diagnostic {
+                        path: self.path.clone(),
+                        primary_err: format!("unknown identifier type `{n}`"),
+                        primary_span: ty.span,
+                        secondary_messages: vec![(
+                            Some(format!(
+                                "{}: did you mean `{}`?",
+                                "help".bright_blue().bold(),
+                                candidate.unwrap()
+                            )),
+                            None,
+                        )],
+                    })
+                } else {
+                    Err(Diagnostic {
+                        path: self.path.clone(),
+                        primary_err: format!("unknown identifier type `{n}`"),
+                        primary_span: ty.span,
+                        secondary_messages: vec![],
+                    })
+                }
+            },
             ParseTypeKind::Array {
                 inner,
                 size
@@ -437,9 +678,62 @@ impl SemanticAnalyzer {
         let mut errors = Vec::new();
 
         for node in &mut *ast {
+            if let Err(err) = self.collect_struct_names(node) {
+                errors.push(err);
+            }
+        }
+
+        if !errors.is_empty() {
+            return Err(errors)
+        }
+
+        for node in &mut *ast {
+            if let Err(err) = self.collect_struct_definitions(node) {
+                errors.extend(err);
+            }
+        }
+
+        if !errors.is_empty() {
+            return Err(errors)
+        }
+
+        if let Err(result) = check_cycles(&self.structs.iter()
+            .map(|(id, data)| (*id, data.clone().unwrap()))
+            .collect()
+        ) {
+            let mut types = Vec::new();
+            let mut s = None;
+            let mut secondary_messages = Vec::new();
+            for (name, (id, span)) in &self.ids {
+                if !result.contains(id) {
+                    continue
+                }
+                secondary_messages.push((
+                    Some(format!("{}: `{name}` was defined here:", "note".bright_blue().bold())),
+                    Some(*span),
+                ));
+                if s.is_none() {
+                    s = Some(*span);
+                }
+
+                types.push(name.as_str());
+            }
+            return Err(vec![Diagnostic {
+                path: self.path.clone(),
+                primary_err: format!("cycling types without indirection have infinite size: {}", types.join(", ")),
+                primary_span: s.unwrap(),
+                secondary_messages
+            }]);
+        }
+
+        for node in &mut *ast {
             if let Err(err) = self.collect_function(node) {
                 errors.extend(err);
             }
+        }
+
+        if !errors.is_empty() {
+            return Err(errors)
         }
 
         for node in ast {
@@ -943,6 +1237,121 @@ impl SemanticAnalyzer {
 
                 return Err(errors);
             },
+            NodeKind::StructDef { .. } => Ok(Type::Unit),
+            NodeKind::FieldAccess { object, field, id } => {
+                let object_ty = self.analyze_node(object)?;
+                match &object_ty {
+                    Type::Struct(sid, _) => {
+                        *id = Some(*sid);
+                        let data = self.structs[sid].as_ref().unwrap();
+                        let mut candidate = None;
+                        let mut candidate_score = 0.0;
+                        for (name, ty) in &data.fields {
+                            if *name == field.0 {
+                                return Ok(ty.clone());
+                            }
+
+                            candidate_score = jaro_winkler(name, &field.0);
+                            candidate = Some(name);
+                        }
+
+                        if candidate_score > CANDIDATE_SCORE_THRESHOLD {
+                            return Err(vec![Diagnostic {
+                                path: self.path.clone(),
+                                primary_err: format!("cannot find field `{}` in object of type `{object_ty}`", field.0),
+                                primary_span: field.1,
+                                secondary_messages: vec![(
+                                    Some(format!("{}: did you mean `{}`", "help".bright_blue().bold(), candidate.unwrap())),
+                                    None
+                                ), (
+                                    Some(format!("{}: `{object_ty}` has fields:\n{}",
+                                        "note".bright_blue().bold(),
+                                        data.fields.iter()
+                                            .map(|(name, ty)| format!("\t+ {name}: {ty}"))
+                                            .collect::<Vec<_>>().join("\n")
+                                    )),
+                                    None
+                                )],
+                            }]);
+                        }
+
+                        Err(vec![Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("cannot find field `{}` in object of type `{object_ty}`", field.0),
+                            primary_span: field.1,
+                            secondary_messages: vec![(
+                                Some(format!("{}: did you mean `{}`", "help".bright_blue().bold(), candidate.unwrap())),
+                                None
+                            ), (
+                                Some(format!("{}: `{object_ty}` has fields:\n{}",
+                                    "note".bright_blue().bold(),
+                                    data.fields.iter()
+                                        .map(|(name, ty)| format!("\t+ {name}: {ty}"))
+                                        .collect::<Vec<_>>().join("\n")
+                                )),
+                                None
+                            )],
+                        }])
+                    },
+                    _ => Err(vec![Diagnostic {
+                        path: self.path.clone(),
+                        primary_err: format!("expected object type, found `{object_ty}`"),
+                        primary_span: object.span,
+                        secondary_messages: Vec::new()
+                    }])
+                }
+            }
         }
     }
+}
+
+fn check_cycles(structs: &HashMap<StructID, StructData>) -> Result<(), Vec<StructID>> {
+    let mut visited = HashSet::new();
+    let mut stack = Vec::new();
+    
+    for struct_name in structs.keys() {
+        visited.clear();
+        stack.clear();
+        
+        if has_cycle(*struct_name, structs, &mut visited, &mut stack) {
+            let cycle_path: Vec<_> = stack.into_iter().chain([*struct_name]).collect();
+            return Err(cycle_path);
+        }
+    }
+    
+    Ok(())
+}
+
+fn has_cycle(
+    current: StructID,
+    structs: &HashMap<StructID, StructData>,
+    visited: &mut HashSet<StructID>,
+    stack: &mut Vec<StructID>
+) -> bool {
+    if stack.contains(&current) {
+        let pos = stack.iter().position(|s| *s == current).unwrap();
+        stack.drain(0..pos);
+        stack.push(current);
+        return true;
+    }
+    
+    if visited.contains(&current) {
+        return false;
+    }
+    
+    visited.insert(current);
+    stack.push(current);
+    
+    let struct_def = &structs[&current];
+    
+    for field in &struct_def.fields {
+        if let Type::Struct(field_struct, _) = &field.1 {
+            if has_cycle(*field_struct, structs, visited, stack) {
+                return true;
+            }
+        }
+    }
+    
+    stack.pop();
+    false
 }

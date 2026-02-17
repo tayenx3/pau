@@ -134,55 +134,86 @@ impl<'a> Parser<'a> {
         
         let name = self.expect_ident()?.lexeme.clone();
 
-        self.expect(TokenKind::LParen)?;
+        if self.expect(TokenKind::LParen).is_ok() {
+            let mut params = Vec::new();
+            while let Some(tok) = self.tokens.get(self.pos) {
+                if tok.kind == TokenKind::RParen {
+                    break
+                }
 
-        let mut params = Vec::new();
-        while let Some(tok) = self.tokens.get(self.pos) {
-            if tok.kind == TokenKind::RParen {
-                break
+                let ident = self.expect_ident()?;
+                let mut param_span = ident.span;
+                let param_name = ident.lexeme.clone();
+                self.expect(TokenKind::Colon)?;
+                let param_ty = self.parse_type()?;
+                param_span.end = param_ty.span.end;
+
+                params.push(Param {
+                    name: param_name,
+                    ty: param_ty,
+                    span: param_span,
+                    ty_cache: None,
+                });
+
+                if self.expect(TokenKind::Comma).is_err() {
+                    break
+                }
             }
 
-            let ident = self.expect_ident()?;
-            let mut param_span = ident.span;
-            let param_name = ident.lexeme.clone();
-            self.expect(TokenKind::Colon)?;
-            let param_ty = self.parse_type()?;
-            param_span.end = param_ty.span.end;
+            self.expect(TokenKind::RParen)?;
 
-            params.push(Param {
-                name: param_name,
-                ty: param_ty,
-                span: param_span,
-                ty_cache: None,
-            });
+            let return_ty = if self.expect(TokenKind::Colon).is_ok() {
+                Some(self.parse_type()?)
+            } else {
+                None
+            };
 
-            if self.expect(TokenKind::Comma).is_err() {
-                break
+            let mut body = Vec::new();
+            while self.tokens.get(self.pos).is_some() {
+                if let Some(Token { kind: TokenKind::End, .. }) = self.tokens.get(self.pos) {
+                    break
+                }
+                body.push(self.parse_statement()?);
             }
-        }
+            stmt_span.end = self.expect(TokenKind::End)?.span.end;
 
-        self.expect(TokenKind::RParen)?;
-
-        let return_ty = if self.expect(TokenKind::Colon).is_ok() {
-            Some(self.parse_type()?)
+            Ok(Node {
+                kind: NodeKind::FunctionDef { name, params, return_ty, body, ty_cache: None, errored: false },
+                span: stmt_span,
+                ty: None,
+            })
         } else {
-            None
-        };
+            let mut fields = Vec::new();
+            while self.tokens.get(self.pos).is_some() {
+                if let Some(Token { kind: TokenKind::End, .. }) = self.tokens.get(self.pos) {
+                    break
+                }
 
-        let mut body = Vec::new();
-        while self.tokens.get(self.pos).is_some() {
-            if let Some(Token { kind: TokenKind::End, .. }) = self.tokens.get(self.pos) {
-                break
+                let ident = self.expect_ident()?;
+                let mut field_span = ident.span;
+                let field_name = ident.lexeme.clone();
+                self.expect(TokenKind::Colon)?;
+                let field_ty = self.parse_type()?;
+                field_span.end = field_ty.span.end;
+
+                fields.push(Param {
+                    name: field_name,
+                    ty: field_ty,
+                    span: field_span,
+                    ty_cache: None,
+                });
+
+                if self.expect(TokenKind::Comma).is_err() {
+                    break
+                }
             }
-            body.push(self.parse_statement()?);
+            stmt_span.end = self.expect(TokenKind::End)?.span.end;
+            Ok(Node {
+                kind: NodeKind::StructDef { name, fields: fields.into_boxed_slice() },
+                span: stmt_span,
+                ty: None,
+            })
         }
-        stmt_span.end = self.expect(TokenKind::End)?.span.end;
-
-        Ok(Node {
-            kind: NodeKind::FunctionDef { name, params, return_ty, body, ty_cache: None, errored: false },
-            span: stmt_span,
-            ty: None,
-        })
     }
 
     fn parse_statement(&mut self) -> Result<Node, Diagnostic> {
@@ -225,6 +256,22 @@ impl<'a> Parser<'a> {
                         ty: None,
                     };
                 },
+                Token { kind: TokenKind::Dot, .. } => {
+                    self.pos += 1;
+                    let field = self.expect_ident()?;
+                    let span = field.span;
+                    let field = field.lexeme.clone();
+                    let node_span = lhs.span.connect(&span);
+                    lhs = Node {
+                        kind: NodeKind::FieldAccess {
+                            object: Box::new(lhs),
+                            field: (field, span),
+                            id: None,
+                        },
+                        span: node_span,
+                        ty: None,
+                    };
+                }
                 Token { kind: TokenKind::Operator(op), .. } => {
                     let bp = if op.is_infix() {
                         let (lbp, rbp) = op.prec();

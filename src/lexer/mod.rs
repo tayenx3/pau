@@ -38,6 +38,11 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                 lexeme: ch.to_string(),
                 span: Span { start: pos, end: pos + 1 },
             }),
+            '.' => tokens.push(Token {
+                kind: TokenKind::Dot,
+                lexeme: ch.to_string(),
+                span: Span { start: pos, end: pos + 1 },
+            }),
             '=' => if let Some(&(end, '=')) = chars.last() {
                 chars.pop();
                 tokens.push(Token {

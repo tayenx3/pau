@@ -45,7 +45,7 @@ fn run_cli(cli: Cli) -> Result<(), String> {
         eprintln!("{}: AST: {parse_tree:#?}", "debug".bright_cyan().bold());
     }
 
-    semantics::analyze(&path, &mut parse_tree, source.len())
+    let s = semantics::analyze(&path, &mut parse_tree, source.len())
         .map_err(
             |err|
             err.iter()
@@ -54,7 +54,13 @@ fn run_cli(cli: Cli) -> Result<(), String> {
                 .join("\n")
         )?;
 
-    let obj = middleend::generate_obj(&path, &parse_tree, cli.emit_ir)?;
+    let ids = s.ids.into_iter()
+        .map(|(name, (id, _))| (name, id))
+        .collect();
+    let structs = s.structs.into_iter()
+        .map(|(id, data)| (id, data.unwrap()))
+        .collect();
+    let obj = middleend::generate_obj(&path, &parse_tree, cli.emit_ir, ids, structs)?;
 
     use std::fs::File;
     use std::io::Write;

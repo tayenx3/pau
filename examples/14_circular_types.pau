@@ -1,0 +1,13 @@
+def A
+    b: B
+end
+
+def B
+    c: C
+end
+
+def C
+    a: A
+end
+
+def main() end
