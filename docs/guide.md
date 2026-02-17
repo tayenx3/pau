@@ -1,18 +1,6 @@
 # The Pau Guide
 This is a guide to learn Pau
 
-## Important Note
-Pau is experimental, so production uses are not recommended.
-Pau is **NOT**:
-- A systems programming language
-- A super performant language
-- A language for everyone
-
-It's supposed to be:
-- Deliberately simple
-- Experimental
-- Open for everyone to use and contribute to
-
 ## Prelude
 ### Comments
 ```pau
