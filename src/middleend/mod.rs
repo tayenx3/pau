@@ -321,6 +321,15 @@ impl<'irg> IRGenerator<'irg> {
                         _ => seman_err(),
                     },
                     Operator::Walrus | Operator::Bang => seman_err(),
+                    Operator::LogOr => lor(lval, rval, builder),
+                    Operator::LogAnd => land(lval, rval, builder),
+                    Operator::Caret => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
+                        ty if ty.is_int() => builder.ins().bxor(lval, rval),
+                        ty::Type::Bool => builder.ins().icmp(IntCC::NotEqual, lval, rval),
+                        _ => seman_err(),
+                    },
+                    Operator::Pipe => builder.ins().bor(lval, rval),
+                    Operator::Ampersand => builder.ins().band(lval, rval),
                 }
             },
             NodeKind::UnaryOp {
@@ -584,7 +593,18 @@ fn frem(x: Value, y: Value, builder: &mut FunctionBuilder) -> Value {
     builder.ins().fsub(x, v3)
 }
 
-// cranelift also doesn't have lnot
+fn lor(x: Value, y: Value, builder: &mut FunctionBuilder) -> Value {
+    let result = builder.ins().iadd(x, y);
+    let expected = builder.ins().iconst(types::I8, 0);
+    builder.ins().icmp(IntCC::NotEqual, result, expected)
+}
+
+fn land(x: Value, y: Value, builder: &mut FunctionBuilder) -> Value {
+    let result = builder.ins().iadd(x, y);
+    let expected = builder.ins().iconst(types::I8, 0b10);
+    builder.ins().icmp(IntCC::Equal, result, expected)
+}
+
 fn lnot(x: Value, builder: &mut FunctionBuilder) -> Value {
     let one = builder.ins().iconst(types::I8, 1);
     builder.ins().bxor(x, one)

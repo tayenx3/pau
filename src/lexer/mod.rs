@@ -174,6 +174,39 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                 lexeme: ch.to_string(),
                 span: Span { start: pos, end: pos + 1 },
             }),
+            '|' => if let Some(&(end, '|')) = chars.last() {
+                chars.pop();
+                tokens.push(Token {
+                    kind: TokenKind::Operator(Operator::LogOr),
+                    lexeme: "!=".to_string(),
+                    span: Span { start: pos, end: end + 1 },
+                });
+            } else {
+                tokens.push(Token {
+                    kind: TokenKind::Operator(Operator::Pipe),
+                    lexeme: ch.to_string(),
+                    span: Span { start: pos, end: pos + 1 },
+                });
+            },
+            '&' => if let Some(&(end, '&')) = chars.last() {
+                chars.pop();
+                tokens.push(Token {
+                    kind: TokenKind::Operator(Operator::LogAnd),
+                    lexeme: "!=".to_string(),
+                    span: Span { start: pos, end: end + 1 },
+                });
+            } else {
+                tokens.push(Token {
+                    kind: TokenKind::Operator(Operator::Ampersand),
+                    lexeme: ch.to_string(),
+                    span: Span { start: pos, end: pos + 1 },
+                });
+            },
+            '^' => tokens.push(Token {
+                kind: TokenKind::Operator(Operator::Caret),
+                lexeme: ch.to_string(),
+                span: Span { start: pos, end: pos + 1 },
+                }),
             '0'..='9' => {
                 let mut acc = ch.to_string();
                 let mut is_float = false;

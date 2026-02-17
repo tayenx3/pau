@@ -25,8 +25,8 @@
 | Type conversions                       |   ❌   |
 | Arrays                                 |   ✅   |
 | Structs                                |   ✅   |
-| Logical ops (`\|\|`, `&&`, `^`)        |   ❌   |
-| Bitwise ops (`\|`, `&`, `^`)           |   ❌   |
+| Logical ops (`\|\|`, `&&`, `^`)        |   ✅   |
+| Bitwise ops (`\|`, `&`, `^`)           |   ✅   |
 | Constants (that's actually macros)     |   ❌   |
 | Module System + Small Standard Library |   ❌   |
 

@@ -7,14 +7,18 @@ pub enum Operator {
     Plus, Minus, Star, Slash, Modulo,
     Eq, Ne, Gt, Lt, Ge, Le,
     Bang,
+    Pipe, Ampersand, Caret,
+    LogOr, LogAnd,
 }
 
 impl Operator {
     pub fn prec(&self) -> (usize, usize) {
         match self {
             Self::Walrus => (11, 10),
-            Self::Eq | Self::Ne => (20, 21),
-            Self::Gt | Self::Lt | Self::Ge | Self::Le => (30, 31),
+            Self::LogOr | Self::LogAnd => (20, 21),
+            Self::Eq | Self::Ne => (30, 31),
+            Self::Gt | Self::Lt | Self::Ge | Self::Le => (40, 41),
+            Self::Pipe | Self::Ampersand | Self::Caret => (30, 31),
             Self::Plus | Self::Minus => (40, 41),
             Self::Star | Self::Slash | Self::Modulo => (50, 51),
             _ => (0, 0), // prefix only ops
@@ -46,6 +50,9 @@ impl Operator {
             } else {
                 None
             },
+            Self::LogOr | Self::LogAnd => (*lhs == Type::Bool).then(|| Type::Bool),
+            Self::Caret => (*lhs == Type::Bool || lhs.is_int()).then(|| lhs.clone()),
+            Self::Pipe | Self::Ampersand => (*lhs == Type::Int).then(|| lhs.clone()),
             _ => None,
         }
     }
@@ -76,6 +83,11 @@ impl fmt::Display for Operator {
             Self::Ge => write!(f, ">="),
             Self::Le => write!(f, "<="),
             Self::Bang => write!(f, "!"),
+            Self::LogOr => write!(f, "||"),
+            Self::LogAnd => write!(f, "&&"),
+            Self::Pipe => write!(f, "|"),
+            Self::Ampersand => write!(f, "&"),
+            Self::Caret => write!(f, "^"),
         }
     }
 }

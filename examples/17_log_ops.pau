@@ -1,0 +1,16 @@
+def main(): int
+    var x = true;
+    var y = false;
+
+    var counter = 10;
+
+    while x && y do
+        counter := counter + 1;
+
+        if !y && counter >= 10 then
+            y := true;
+        end
+    end
+
+    counter
+end

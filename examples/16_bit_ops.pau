@@ -1,0 +1,6 @@
+def main(): int
+    let x = 2; /: 2 = 0010
+    let y = 5; /: 5 = 0101
+
+    x | y /: 0111 = 7
+end
