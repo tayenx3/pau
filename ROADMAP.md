@@ -27,7 +27,7 @@
 | Structs                                |   ✅   |
 | Logical ops (`\|\|`, `&&`, `^`)        |   ✅   |
 | Bitwise ops (`\|`, `&`, `^`)           |   ✅   |
-| Constants (that's actually macros)     |   ❌   |
+| Constants (that's actually macros)     |   ✅   |
 | Module System + Small Standard Library |   ❌   |
 
 ## v0.1.0-beta
