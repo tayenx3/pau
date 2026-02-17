@@ -61,7 +61,12 @@ pub enum NodeKind {
         object: Box<Node>,
         field: (String, Span),
         id: Option<StructID>,
-    }
+    },
+    Const {
+        name: String,
+        ty: Option<ParseType>,
+        value: Box<Node>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

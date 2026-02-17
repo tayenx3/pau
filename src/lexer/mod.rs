@@ -474,18 +474,17 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
             },
             'a'..='z' | 'A'..='Z' | '_' => {
                 let mut acc = ch.to_string();
-                let mut end = pos + 1;
+                let mut end = pos;
 
-                while let Some(&(pos, ch)) = chars.last() {
+                while let Some(&(_, ch)) = chars.last() {
+                    end += 1;
                     match ch {
                         'a'..='z' | 'A'..='Z' | '_' | '0'..='9' => acc.push(ch),
-                        _ => {
-                            end = pos;
-                            break
-                        },
+                        _ => break,
                     }
                     chars.pop();
                 }
+                end += 1;
 
                 match &*acc {
                     "let" => tokens.push(Token {
@@ -540,6 +539,11 @@ pub fn tokenize(path: &str, source: &str) -> Result<Vec<Token>, Diagnostic> {
                     }),
                     "def" => tokens.push(Token {
                         kind: TokenKind::Def,
+                        lexeme: acc,
+                        span: Span { start: pos, end },
+                    }),
+                    "const" => tokens.push(Token {
+                        kind: TokenKind::Const,
                         lexeme: acc,
                         span: Span { start: pos, end },
                     }),

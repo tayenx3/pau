@@ -154,6 +154,7 @@ impl SemanticAnalyzer {
                     false,
                     node.span,
                     InitState::Definitely,
+                    None
                 );
             },
             _ => {},
@@ -196,7 +197,7 @@ impl SemanticAnalyzer {
                             )]
                         });
                     }
-                    self.define_identifier(name, ty, false, node.span, InitState::Definitely);
+                    self.define_identifier(name, ty, false, node.span, InitState::Definitely, None);
                     Ok::<(), Diagnostic>(())
                 })().inspect_err(|_| *errored = true)
                 .map_err(|err| vec![err])?;
@@ -214,6 +215,7 @@ impl SemanticAnalyzer {
         mutability: bool,
         defined_at: Span,
         init_state: InitState,
+        const_val: Option<Node>,
     ) {
         self.scope.last_mut().unwrap().insert(Symbol {
             name: name.to_string(),
@@ -221,6 +223,7 @@ impl SemanticAnalyzer {
             mutability,
             defined_at,
             init_state,
+            const_val
         });
     }
 
@@ -762,7 +765,12 @@ impl SemanticAnalyzer {
             NodeKind::F64(_) => Ok(Type::F64),
             NodeKind::Identifier(n) => self
                 .find_identifier(n, node.span)
-                .map(|symbol| symbol.ty.clone())
+                .map(|symbol| {
+                    if let Some(expr) = &symbol.const_val {
+                        *node = expr.clone();
+                    }
+                    symbol.ty.clone()
+                })
                 .map_err(|err| vec![err]),
             NodeKind::Semi(stmt) => {
                 let ty = self.analyze_node(stmt)?;
@@ -870,6 +878,7 @@ impl SemanticAnalyzer {
                         *mutability,
                         node.span,
                         init_state,
+                        None
                     );
 
                     if let Some(init) = init {
@@ -1035,6 +1044,7 @@ impl SemanticAnalyzer {
                             false,
                             param.span,
                             InitState::Definitely,
+                            None
                         );
                     }
 
@@ -1271,6 +1281,25 @@ impl SemanticAnalyzer {
                         secondary_messages: Vec::new()
                     }])
                 }
+            },
+            NodeKind::Const { name, ty, value } => {
+                let value_ty = self.analyze_node(value)?;
+                value.ty = Some(value_ty.clone());
+                if let Some(ty) = ty {
+                    let rty = self.resolve_type(ty).map_err(|err| vec![err])?;
+                    if rty != value_ty {
+                        return Err(vec![Diagnostic {
+                            path: self.path.clone(),
+                            primary_err: format!("`{name}` is declared as `{rty}` but initialized as `{value_ty}`"),
+                            primary_span: value.span,
+                            secondary_messages: Vec::new(),
+                        }]);
+                    }
+                }
+                let mut value = *value.clone();
+                value.span = node.span;
+                self.define_identifier(name, value_ty, false, node.span, InitState::Definitely, Some(value));
+                Ok(Type::Unit)
             }
         }
     }

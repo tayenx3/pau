@@ -119,6 +119,7 @@ impl<'a> Parser<'a> {
 
         match &tok.kind {
             TokenKind::Def => self.parse_def(),
+            TokenKind::Const => self.parse_const(),
             _ => Err(Diagnostic {
                 path: self.path.clone(),
                 primary_err: format!("expected item, found {}", tok),
@@ -219,6 +220,7 @@ impl<'a> Parser<'a> {
     fn parse_statement(&mut self) -> Result<Node, Diagnostic> {
         let mut node = match self.tokens.get(self.pos) {
             Some(Token { kind: TokenKind::While, .. }) => self.parse_while()?,
+            Some(Token { kind: TokenKind::Const, .. }) => self.parse_const()?,
             _ => self.parse_expression(0)?,
         };
 
@@ -543,6 +545,36 @@ impl<'a> Parser<'a> {
                 ty,
                 init,
                 mutability
+            },
+            span: stmt_span,
+            ty: None,
+        })
+    }
+
+    fn parse_const(&mut self) -> Result<Node, Diagnostic> {
+        let mut stmt_span = self.tokens.get(self.pos).unwrap().span;
+        self.pos += 1;
+
+        let tok = self.expect_ident()?;
+        let name = tok.lexeme.clone();
+
+        let ty = if self.expect(TokenKind::Colon).is_ok() {
+            let ty = self.parse_type()?;
+            stmt_span.end = ty.span.end;
+            Some(ty)
+        } else {
+            None
+        };
+
+        self.expect(TokenKind::Assign)?;
+        let value = Box::new(self.parse_expression(0)?);
+        stmt_span.end = value.span.end;
+
+        Ok(Node {
+            kind: NodeKind::Const {
+                name,
+                ty,
+                value
             },
             span: stmt_span,
             ty: None,

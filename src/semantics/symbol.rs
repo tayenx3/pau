@@ -1,5 +1,6 @@
 use crate::span::Span;
 use super::ty::Type;
+use crate::parser::ast::Node;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InitState {
@@ -13,4 +14,5 @@ pub struct Symbol {
     pub mutability: bool,
     pub defined_at: Span,
     pub init_state: InitState,
+    pub const_val: Option<Node>,
 }

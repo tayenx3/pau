@@ -547,7 +547,8 @@ impl<'irg> IRGenerator<'irg> {
                 let addr = builder.ins().iadd(cval, offset);
                 builder.ins().load(node.ty.as_ref().unwrap().to_clif_ty(), MemFlags::new(), addr, 0)
             },
-            NodeKind::FunctionDef { .. } | NodeKind::StructDef { .. } => self.unit.unwrap_or_else(|| {
+            NodeKind::FunctionDef { .. } | NodeKind::StructDef { .. }
+            | NodeKind::Const { .. }=> self.unit.unwrap_or_else(|| {
                 self.unit = Some(builder.ins().iconst(types::I8, 0));
                 self.unit.unwrap()
             }),

@@ -25,7 +25,7 @@
 | Type conversions                       |   ❌   |
 | Arrays                                 |   ✅   |
 | Structs                                |   ✅   |
-| Enums                                  |   ❌   |
+| Constants (that's actually macros)     |   ❌   |
 | Module System + Small Standard Library |   ❌   |
 
 ## v0.1.0-beta
