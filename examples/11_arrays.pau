@@ -1,6 +1,26 @@
-def main(): int
-    var myArray = [10, 12, 7];
-    myArray[2u] := 15; /: comment this out to get 7
+def gimmeAGlowUp(x: [int; 5]): [int; 5]
+    var result = [0, 0, 0, 0, 0];
 
-    myArray[2u] /: should be 15
+    var idx = 0u;
+    while idx < 5u do
+        let value = x[idx];
+
+        if value >= 0 then
+            result[idx] := value;
+        else
+            result[idx] := -value;
+        end
+
+        idx := idx + 1u;
+    end
+
+    result
+end
+
+def main(): int
+    let before = [0, 5, 24, -55, 98];
+
+    let after = gimmeAGlowUp(before);
+
+    0
 end

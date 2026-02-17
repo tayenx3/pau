@@ -30,7 +30,7 @@ pauc main.pau -o main.exe
 ```
 
 ## Where to learn Pau?
-idk man ur on ur own (for now)
+Check out [the Guide](docs/guide.md)
 
 ## Why the name?
 The name "Pau" comes from the Latin word "paulus" which means "small" or "not large"
