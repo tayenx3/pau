@@ -11,7 +11,7 @@ use crate::parser::ty::{ParseType, ParseTypeKind};
 use crate::span::Span;
 use colored::Colorize;
 use scope::{Scope, ScopeContext};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use symbol::{InitState, Symbol};
 use ty::Type;
 
@@ -697,35 +697,6 @@ impl SemanticAnalyzer {
             return Err(errors)
         }
 
-        if let Err(result) = check_cycles(&self.structs.iter()
-            .map(|(id, data)| (*id, data.clone().unwrap()))
-            .collect()
-        ) {
-            let mut types = Vec::new();
-            let mut s = None;
-            let mut secondary_messages = Vec::new();
-            for (name, (id, span)) in &self.ids {
-                if !result.contains(id) {
-                    continue
-                }
-                secondary_messages.push((
-                    Some(format!("{}: `{name}` was defined here:", "note".bright_blue().bold())),
-                    Some(*span),
-                ));
-                if s.is_none() {
-                    s = Some(*span);
-                }
-
-                types.push(name.as_str());
-            }
-            return Err(vec![Diagnostic {
-                path: self.path.clone(),
-                primary_err: format!("cycling types without indirection have infinite size: {}", types.join(", ")),
-                primary_span: s.unwrap(),
-                secondary_messages
-            }]);
-        }
-
         for node in &mut *ast {
             if let Err(err) = self.collect_function(node) {
                 errors.extend(err);
@@ -1303,55 +1274,4 @@ impl SemanticAnalyzer {
             }
         }
     }
-}
-
-fn check_cycles(structs: &HashMap<StructID, StructData>) -> Result<(), Vec<StructID>> {
-    let mut visited = HashSet::new();
-    let mut stack = Vec::new();
-    
-    for struct_name in structs.keys() {
-        visited.clear();
-        stack.clear();
-        
-        if has_cycle(*struct_name, structs, &mut visited, &mut stack) {
-            let cycle_path: Vec<_> = stack.into_iter().chain([*struct_name]).collect();
-            return Err(cycle_path);
-        }
-    }
-    
-    Ok(())
-}
-
-fn has_cycle(
-    current: StructID,
-    structs: &HashMap<StructID, StructData>,
-    visited: &mut HashSet<StructID>,
-    stack: &mut Vec<StructID>
-) -> bool {
-    if stack.contains(&current) {
-        let pos = stack.iter().position(|s| *s == current).unwrap();
-        stack.drain(0..pos);
-        stack.push(current);
-        return true;
-    }
-    
-    if visited.contains(&current) {
-        return false;
-    }
-    
-    visited.insert(current);
-    stack.push(current);
-    
-    let struct_def = &structs[&current];
-    
-    for field in &struct_def.fields {
-        if let Type::Struct(field_struct, _) = &field.1 {
-            if has_cycle(*field_struct, structs, visited, stack) {
-                return true;
-            }
-        }
-    }
-    
-    stack.pop();
-    false
 }

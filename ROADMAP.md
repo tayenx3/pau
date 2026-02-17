@@ -25,6 +25,7 @@
 | Type conversions                       |   ❌   |
 | Arrays                                 |   ✅   |
 | Structs                                |   ✅   |
+| Enums                                  |   ❌   |
 | Module System + Small Standard Library |   ❌   |
 
 ## v0.1.0-beta

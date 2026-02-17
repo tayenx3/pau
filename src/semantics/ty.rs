@@ -97,12 +97,23 @@ impl Type {
                 let s = &structs[id];
                 let mut total = 0;
                 for (offset, (_, field)) in s.fields.iter().enumerate() {
-                    total += field.size(structs);
+                    total += field.physical_size();
                     let align = field.align(structs) as usize;
                     total += ((align - (offset % align)) % align) as u32;
                 }
                 total
             },
+        }
+    }
+
+    pub fn physical_size(&self) -> u32 {
+        match self {
+            Self::Int | Self::UInt | Self::Function(_, _) | Self::Float => size_of::<usize>() as u32,
+            Self::I8 | Self::U8 | Self::Unit | Self::Unknown | Self::Bool => 1,
+            Self::I16 | Self::U16 => 2,
+            Self::I32 | Self::U32 | Self::F32 => 4,
+            Self::I64 | Self::U64 | Self::F64 => 8,
+            Self::Array(_, _) | Self::Struct(_, _) => size_of::<usize>() as u32,
         }
     }
 

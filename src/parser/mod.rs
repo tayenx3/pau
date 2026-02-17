@@ -341,7 +341,9 @@ impl<'a> Parser<'a> {
                 self.pos += 1;
                 if self.expect(TokenKind::LParen).is_ok() {
                     let mut args = Vec::new();
-                    while self.tokens.get(self.pos).is_some() {
+                    while let Some(tok) = self.tokens.get(self.pos) {
+                        if tok.kind == TokenKind::RParen { break }
+                        
                         let arg = self.parse_expression(0)?;
                         args.push(arg);
 
