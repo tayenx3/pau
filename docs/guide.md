@@ -34,4 +34,3 @@ if x == y then
 - [Arrays](arrays.md)
 - [Structs](structs.md)
 - [Constants](constants.md)
-- [Naming Conventions](naming_conventions.md)

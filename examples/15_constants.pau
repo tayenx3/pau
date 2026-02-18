@@ -1,5 +1,5 @@
-const MYCONSTANT = 15;
+const MY_CONSTANT = 15;
 
 def main(): int
-    MYCONSTANT + 5
+    MY_CONSTANT + 5
 end

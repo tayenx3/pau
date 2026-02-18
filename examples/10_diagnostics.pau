@@ -2,14 +2,14 @@ def main(): int
     0
 end
 
-def shouldError1(): thisTypeDoesntExist
+def should_error1(): this_type_doesnt_exist
 end
 
-def shouldError2(): int
+def should_error2(): int
     10u8
 end
 
-def shouldError3(): float
+def should_error3(): float
     let x = 10;
     
     x := 15;

@@ -5,8 +5,8 @@ def MyStruct
 end
 
 def main(): int
-    var myStruct = MyStruct(10i32, -15, 8u8);
-    myStruct.b := 24;
+    var my_struct = MyStruct(10i32, -15, 8u8);
+    my_struct.b := 24;
 
-    myStruct.b
+    my_struct.b
 end
