@@ -60,7 +60,7 @@ fn run_cli(cli: Cli) -> Result<(), String> {
     let structs = s.structs.into_iter()
         .map(|(id, data)| (id, data.unwrap()))
         .collect();
-    let obj = middleend::generate_obj(&path, &parse_tree, cli.emit_ir, ids, structs)?;
+    let obj = middleend::generate_obj(&path, &parse_tree, cli.emit_ir, ids, structs, &line_starts, &lines)?;
 
     use std::fs::File;
     use std::io::Write;

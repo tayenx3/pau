@@ -30,7 +30,7 @@ pub struct StructID(pub u32);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructData {
-    pub fields: Box<[(String, Type)]>,
+    pub fields: Box<[(String, Type, Span)]>,
 }
 
 pub struct SemanticAnalyzer {
@@ -137,12 +137,7 @@ impl SemanticAnalyzer {
 
                 let (id, _) = self.ids[name];
                 self.structs.insert(id, Some(StructData {
-                    fields: resolved_fields
-                        .clone()
-                        .into_iter()
-                        .map(|(name, ty, _)| (name, ty))
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice(),
+                    fields: resolved_fields.clone().into_boxed_slice(),
                 }));
                 let f = resolved_fields
                     .into_iter()
@@ -512,7 +507,7 @@ impl SemanticAnalyzer {
                         let data = self.structs[sid].as_ref().unwrap();
                         let mut candidate = None;
                         let mut candidate_score = 0.0;
-                        for (name, ty) in &data.fields {
+                        for (name, ty, _) in &data.fields {
                             if *name == field.0 {
                                 if let Some(ref val_type) = val_ty {
                                     if ty != val_type {
@@ -551,7 +546,7 @@ impl SemanticAnalyzer {
                                         "note".bright_blue().bold(),
                                         symbol.ty,
                                         data.fields.iter()
-                                            .map(|(name, ty)| format!("\t+ {name}: {ty}"))
+                                            .map(|(name, ty, _)| format!("\t+ {name}: {ty}"))
                                             .collect::<Vec<_>>().join("\n")
                                     )),
                                     None
@@ -571,7 +566,7 @@ impl SemanticAnalyzer {
                                     "note".bright_blue().bold(),
                                     symbol.ty,
                                     data.fields.iter()
-                                        .map(|(name, ty)| format!("\t+ {name}: {ty}"))
+                                        .map(|(name, ty, _)| format!("\t+ {name}: {ty}"))
                                         .collect::<Vec<_>>().join("\n")
                                 )),
                                 None
@@ -1227,7 +1222,7 @@ impl SemanticAnalyzer {
                         let data = self.structs[sid].as_ref().unwrap();
                         let mut candidate = None;
                         let mut candidate_score = 0.0;
-                        for (name, ty) in &data.fields {
+                        for (name, ty, _) in &data.fields {
                             if *name == field.0 {
                                 return Ok(ty.clone());
                             }
@@ -1248,7 +1243,7 @@ impl SemanticAnalyzer {
                                     Some(format!("{}: `{object_ty}` has fields:\n{}",
                                         "note".bright_blue().bold(),
                                         data.fields.iter()
-                                            .map(|(name, ty)| format!("\t+ {name}: {ty}"))
+                                            .map(|(name, ty, _)| format!("\t+ {name}: {ty}"))
                                             .collect::<Vec<_>>().join("\n")
                                     )),
                                     None
@@ -1267,7 +1262,7 @@ impl SemanticAnalyzer {
                                 Some(format!("{}: `{object_ty}` has fields:\n{}",
                                     "note".bright_blue().bold(),
                                     data.fields.iter()
-                                        .map(|(name, ty)| format!("\t+ {name}: {ty}"))
+                                        .map(|(name, ty, _)| format!("\t+ {name}: {ty}"))
                                         .collect::<Vec<_>>().join("\n")
                                 )),
                                 None

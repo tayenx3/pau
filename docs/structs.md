@@ -47,3 +47,53 @@ end
 
 let myVec3 = Vec3(1.0, 2.0, -5.0);
 ```
+
+## Circular Types
+Unlike Rust, you can create self-referential types and circular types,
+because structs and arrays are stored in a separate stack slot, and variables hold a pointer to them
+```pau
+/: automatic indirection
+def Node
+    value: int,   /: physically, this field is a platform integer
+    next: Node,   /: physically, this field is a pointer
+end
+
+def A
+    b: B,
+end
+
+def B
+    c: C,
+end
+
+def C
+    a: A, /: OK!
+end
+```
+
+## Examples
+```pau
+def Vec3
+    x: float,
+    y: float,
+    z: float
+end
+
+def Vec4
+    x: float,
+    y: float,
+    z: float,
+    w: float
+end
+
+def Transform
+    pos: Vec3,
+    quat: Vec4,
+    scale: Vec3
+end
+
+let transform = Transform(
+    Vec3(0.0, 0.0, 0.0),
+    Vec4(0.0, 0.0, 0.0, 1.0),
+    Vec3(1.0, 1.0, 1.0)
+);

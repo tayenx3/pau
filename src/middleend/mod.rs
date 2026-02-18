@@ -14,15 +14,15 @@ use cranelift_codegen::ir::{
 use cranelift_module::{FuncId, Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use colored::Colorize;
-use crate::parser::ast::{Node, NodeKind, Param};
+use crate::{diag::Diagnostic, parser::ast::{Node, NodeKind, Param}};
 use crate::operator::Operator;
 use crate::semantics::{ty, StructData, StructID};
 
-pub fn generate_obj(path: &str, ast: &[Node], emit_ir: bool, ids: HashMap<String, StructID>, structs: HashMap<StructID, StructData>) -> Result<Vec<u8>, String> {
+pub fn generate_obj(path: &str, ast: &[Node], emit_ir: bool, ids: HashMap<String, StructID>, structs: HashMap<StructID, StructData>,line_starts: &[usize], lines: &[&str]) -> Result<Vec<u8>, String> {
     use std::path::Path;
 
     let module_name = Path::new(path).file_stem().unwrap().display().to_string();
-    IRGenerator::new(module_name, ids, structs)?.generate(ast, emit_ir)
+    IRGenerator::new(module_name, ids, structs)?.generate(ast, emit_ir, path, line_starts, lines)
 }
 
 fn seman_err() -> ! {
@@ -103,7 +103,7 @@ impl<'irg> IRGenerator<'irg> {
         Ok(())
     }
 
-    fn generate(mut self, ast: &'irg [Node], emit_ir: bool) -> Result<Vec<u8>, String> {
+    fn generate(mut self, ast: &'irg [Node], emit_ir: bool, path: &str, line_starts: &[usize], lines: &[&str]) -> Result<Vec<u8>, String> {
         for node in ast {
             self.collect_function(node, emit_ir)?;
         }
@@ -126,8 +126,8 @@ impl<'irg> IRGenerator<'irg> {
                 let param_ty = param.ty_cache.as_ref().unwrap_or_else(|| seman_err());
                 let ss = builder.create_sized_stack_slot(StackSlotData {
                     kind: StackSlotKind::ExplicitSlot,
-                    size: param_ty.size(&self.structs),
-                    align_shift: param_ty.align(&self.structs),
+                    size: param_ty.size(&self.structs, path, param.span).map_err(|err| err.display(line_starts, lines))?,
+                    align_shift: param_ty.align(&self.structs, path, param.span),
                     key: None,
                 });
                 builder.ins().stack_store(*pval, ss, 0);
@@ -138,7 +138,7 @@ impl<'irg> IRGenerator<'irg> {
             let mut result = self.unit.unwrap();
 
             for node in body {
-                result = self.generate_node(node, &mut builder);
+                result = self.generate_node(node, &mut builder, path).map_err(|err| err.display(line_starts, lines))?;
             }
             builder.ins().return_(&[result]);
 
@@ -173,8 +173,8 @@ impl<'irg> IRGenerator<'irg> {
         seman_err()
     }
 
-    fn generate_node(&mut self, node: &Node, builder: &mut FunctionBuilder) -> Value {
-        match &node.kind {
+    fn generate_node(&mut self, node: &Node, builder: &mut FunctionBuilder, path: &str) -> Result<Value, Diagnostic> {
+        Ok(match &node.kind {
             NodeKind::Integer(n) => builder.ins().iconst(match size_of::<usize>() {
                 4 => types::I32,
                 8 => types::I64,
@@ -206,7 +206,7 @@ impl<'irg> IRGenerator<'irg> {
                 builder.ins().stack_load(ty, slot, 0)
             },
             NodeKind::Semi(stmt) => {
-                self.generate_node(stmt, builder);
+                self.generate_node(stmt, builder, path)?;
                 self.unit.unwrap()
             },
             NodeKind::BinaryOp {
@@ -215,44 +215,45 @@ impl<'irg> IRGenerator<'irg> {
                 rhs,
             } => {
                 if *op == Operator::Walrus {
-                    let rval = self.generate_node(rhs, builder);
+                    let rval = self.generate_node(rhs, builder, path)?;
 
                     if let NodeKind::Identifier(n) = &lhs.kind {
                         let (ss, _) = self.find_var(n);
                         builder.ins().stack_store(rval, ss, 0);
                     } else if let NodeKind::Index { collection, index } = &lhs.kind {
-                        let cval = self.generate_node(collection, builder);
-                        let idx_value = self.generate_node(index, builder);
+                        let cval = self.generate_node(collection, builder, path)?;
+                        let idx_value = self.generate_node(index, builder, path)?;
 
                         let size = builder.ins().iconst(
                             ty::Type::UInt.to_clif_ty(),
-                            lhs.ty.as_ref().unwrap().size(&self.structs) as i64
+                            lhs.ty.as_ref().unwrap()
+                                .size(&self.structs, path, lhs.span)? as i64
                         );
                         let offset = builder.ins().imul(idx_value, size);
                         let addr = builder.ins().iadd(cval, offset);
                         builder.ins().store(MemFlags::new(), rval, addr, 0);
                     } else if let NodeKind::FieldAccess { object, field, id } = &lhs.kind {
-                        let oval = self.generate_node(object, builder);
+                        let oval = self.generate_node(object, builder, path)?;
                         let data = &self.structs[&id.unwrap()];
                         let mut current_offset = 0;
-                        for (name, ty) in &data.fields {
-                            let align = ty.align(&self.structs) as usize;
+                        for (name, ty, span) in &data.fields {
+                            let align = ty.align(&self.structs, path, *span) as usize;
                             let padding = (align - (current_offset % align)) % align;
                             current_offset += padding;
 
                             if field.0 == *name { break }
-                            current_offset += ty.size(&self.structs) as usize;
+                            current_offset += ty.size(&self.structs, path, *span)? as usize;
                         }
                         builder.ins().store(MemFlags::new(), rval, oval, current_offset as i32);
                     } else {
                         unreachable!("invalid mutation target")
                     }
                     
-                    return rval;
+                    return Ok(rval);
                 }
                 
-                let lval = self.generate_node(lhs, builder);
-                let rval = self.generate_node(rhs, builder);
+                let lval = self.generate_node(lhs, builder, path)?;
+                let rval = self.generate_node(rhs, builder, path)?;
 
                 match op {
                     Operator::Plus => match lhs.ty.as_ref().unwrap_or_else(|| seman_err()) {
@@ -336,7 +337,7 @@ impl<'irg> IRGenerator<'irg> {
                 op,
                 operand,
             } => {
-                let oval = self.generate_node(operand, builder);
+                let oval = self.generate_node(operand, builder, path)?;
 
                 match op {
                     Operator::Plus => match operand.ty.as_ref().unwrap_or_else(|| seman_err()) {
@@ -365,13 +366,13 @@ impl<'irg> IRGenerator<'irg> {
             } => {
                 let ss = builder.create_sized_stack_slot(StackSlotData {
                     kind: StackSlotKind::ExplicitSlot,
-                    size: node.ty.as_ref().unwrap().size(&self.structs),
-                    align_shift: node.ty.as_ref().unwrap().align(&self.structs),
+                    size: node.ty.as_ref().unwrap().size(&self.structs, path, node.span)?,
+                    align_shift: node.ty.as_ref().unwrap().align(&self.structs, path, node.span),
                     key: None,
                 });
                 let init = init.as_ref()
-                    .map(|expr| self.generate_node(expr, builder))
-                    .unwrap_or(self.unit.unwrap());
+                    .map(|expr| self.generate_node(expr, builder, path))
+                    .unwrap_or(Ok(self.unit.unwrap()))?;
                 builder.ins().stack_store(init, ss, 0);
 
                 let ty = node.ty.as_ref().unwrap().to_clif_ty();
@@ -393,7 +394,7 @@ impl<'irg> IRGenerator<'irg> {
                 builder.append_block_param(merge_block, node.ty.as_ref().unwrap_or_else(|| seman_err()).to_clif_ty());
                 builder.append_block_param(merge_block, types::I8);
 
-                let cond_val = self.generate_node(condition, builder);
+                let cond_val = self.generate_node(condition, builder, path)?;
                 // unit lives on the main block so we have to pass it along
                 let unit = self.unit.unwrap();
                 builder.ins().brif(
@@ -407,7 +408,7 @@ impl<'irg> IRGenerator<'irg> {
                 let mut then_val = self.unit.unwrap();
                 self.scope.push(HashMap::new());
                 for node in then_body {
-                    then_val = self.generate_node(node, builder);
+                    then_val = self.generate_node(node, builder, path)?;
                 }
                 self.scope.pop();
                 builder.ins().jump(merge_block, &[BlockArg::Value(then_val), BlockArg::Value(self.unit.unwrap())]); // keep passing unit
@@ -419,7 +420,7 @@ impl<'irg> IRGenerator<'irg> {
                         self.scope.push(HashMap::new());
                         let mut val = self.unit.unwrap();
                         for node in else_body {
-                            val = self.generate_node(node, builder);
+                            val = self.generate_node(node, builder, path)?;
                         }
                         self.scope.pop();
                         val
@@ -456,7 +457,7 @@ impl<'irg> IRGenerator<'irg> {
                 builder.switch_to_block(cond_block);
                 let unit = builder.block_params(cond_block)[0];
                 self.unit = Some(unit);
-                let cond_val = self.generate_node(condition, builder);
+                let cond_val = self.generate_node(condition, builder, path)?;
                 builder.ins().brif(
                     cond_val,
                     body_block, &[BlockArg::Value(unit)],
@@ -467,7 +468,7 @@ impl<'irg> IRGenerator<'irg> {
                 let unit = builder.block_params(body_block)[0];
                 self.unit = Some(unit);
                 for node in body {
-                    self.generate_node(node, builder);
+                    self.generate_node(node, builder, path)?;
                 }
                 builder.ins().jump(cond_block, &[BlockArg::Value(unit)]);
 
@@ -488,21 +489,21 @@ impl<'irg> IRGenerator<'irg> {
                     let ty = ty::Type::Struct(*id, callee.clone());
                     let ss = builder.create_sized_stack_slot(StackSlotData {
                         kind: StackSlotKind::ExplicitSlot,
-                        size: ty.size(&self.structs),
-                        align_shift: ty.align(&self.structs),
+                        size: ty.size(&self.structs, path, node.span)?,
+                        align_shift: ty.align(&self.structs, path, node.span),
                         key: None
                     });
                     
                     let mut current_offset = 0;
-                    for (field, (_, ty)) in args.iter().zip(data.fields) {
-                        let align = ty.align(&self.structs) as usize;
+                    for (field, (_, ty, span)) in args.iter().zip(data.fields) {
+                        let align = ty.align(&self.structs, path, span) as usize;
                         let padding = (align - (current_offset % align)) % align;
                         current_offset += padding;
                         
-                        let value = self.generate_node(field, builder);
+                        let value = self.generate_node(field, builder, path)?;
                         builder.ins().stack_store(value, ss, current_offset as i32);
                         
-                        current_offset += ty.size(&self.structs) as usize;
+                        current_offset += ty.size(&self.structs, path, span)? as usize;
                     }
                     
                     builder.ins().stack_addr(ty::Type::Int.to_clif_ty(), ss, 0)
@@ -510,7 +511,7 @@ impl<'irg> IRGenerator<'irg> {
                     let mut compiled_args = Vec::new();
 
                     for arg in args {
-                        compiled_args.push(self.generate_node(arg, builder));
+                        compiled_args.push(self.generate_node(arg, builder, path)?);
                     }
 
                     let func_id = self.functions[callee].1;
@@ -526,16 +527,16 @@ impl<'irg> IRGenerator<'irg> {
                 let ty = node.ty.as_ref().unwrap();
                 match ty {
                     ty::Type::Array(inner, len) => {
-                        let size = inner.size(&self.structs) * len.unwrap() as u32;
+                        let size = inner.size(&self.structs, path, node.span)? * len.unwrap() as u32;
                         let ss = builder.create_sized_stack_slot(StackSlotData {
                             kind: StackSlotKind::ExplicitSlot,
                             size,
-                            align_shift: inner.align(&self.structs),
+                            align_shift: inner.align(&self.structs, path, node.span),
                             key: None,
                         });
                         for (idx, item) in items.iter().enumerate() {
-                            let value = self.generate_node(item, builder);
-                            builder.ins().stack_store(value, ss, (inner.size(&self.structs) * idx as u32) as i32);
+                            let value = self.generate_node(item, builder, path)?;
+                            builder.ins().stack_store(value, ss, (inner.size(&self.structs, path, node.span)? * idx as u32) as i32);
                         }
                         builder.ins().stack_addr(ty::Type::Int.to_clif_ty(), ss, 0)
                     },
@@ -545,12 +546,12 @@ impl<'irg> IRGenerator<'irg> {
             NodeKind::Index {
                 collection, index
             } => {
-                let cval = self.generate_node(collection, builder);
-                let idx_value = self.generate_node(index, builder);
+                let cval = self.generate_node(collection, builder, path)?;
+                let idx_value = self.generate_node(index, builder, path)?;
 
                 let size = builder.ins().iconst(
                     ty::Type::UInt.to_clif_ty(),
-                    node.ty.as_ref().unwrap().size(&self.structs) as i64
+                    node.ty.as_ref().unwrap().size(&self.structs, path, node.span)? as i64
                 );
                 let offset = builder.ins().imul(idx_value, size);
                 let addr = builder.ins().iadd(cval, offset);
@@ -562,16 +563,16 @@ impl<'irg> IRGenerator<'irg> {
                 self.unit.unwrap()
             }),
             NodeKind::FieldAccess { object, field, id } => {
-                let value = self.generate_node(object, builder);
+                let value = self.generate_node(object, builder, path)?;
                 let data = &self.structs[&id.unwrap()];
                 let mut current_offset = 0;
-                for (name, ty) in &data.fields {
-                    let align = ty.align(&self.structs) as usize;
+                for (name, ty, span) in &data.fields {
+                    let align = ty.align(&self.structs, path, *span) as usize;
                     let padding = (align - (current_offset % align)) % align;
                     current_offset += padding;
 
                     if field.0 == *name { break }
-                    current_offset += ty.size(&self.structs) as usize;
+                    current_offset += ty.size(&self.structs, path, *span)? as usize;
                 }
 
                 builder.ins().load(
@@ -581,7 +582,7 @@ impl<'irg> IRGenerator<'irg> {
                     current_offset as i32
                 )
             },
-        }
+        })
     }
 }
 

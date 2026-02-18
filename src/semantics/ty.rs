@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 use cranelift::prelude::types;
-use crate::semantics::StructData;
+use crate::{diag::Diagnostic, semantics::StructData, span::Span};
 
 use super::StructID;
 
@@ -81,29 +81,34 @@ impl Type {
         }
     }
 
-    pub fn size(&self, structs: &HashMap<StructID, StructData>) -> u32 {
-        match self {
+    pub fn size(&self, structs: &HashMap<StructID, StructData>, path: &str, span: Span) -> Result<u32, Diagnostic> {
+        Ok(match self {
             Self::Int | Self::UInt | Self::Function(_, _) | Self::Float => size_of::<usize>() as u32,
             Self::I8 | Self::U8 | Self::Unit | Self::Unknown | Self::Bool => 1,
             Self::I16 | Self::U16 => 2,
             Self::I32 | Self::U32 | Self::F32 => 4,
             Self::I64 | Self::U64 | Self::F64 => 8,
             Self::Array(inner, size) => if let Some(size) = size {
-                inner.size(structs) * *size as u32
+                inner.size(structs, path, span)? * *size as u32
             } else {
-                unreachable!("unsized type") // handled by semantics checker
+                return Err(Diagnostic {
+                    path: path.to_string(),
+                    primary_err: format!("unsized type `{self}`"),
+                    primary_span: span,
+                    secondary_messages: Vec::new(),
+                });
             },
             Self::Struct(id, _) => {
                 let s = &structs[id];
                 let mut total = 0;
-                for (offset, (_, field)) in s.fields.iter().enumerate() {
+                for (offset, (_, field, _)) in s.fields.iter().enumerate() {
                     total += field.physical_size();
-                    let align = field.align(structs) as usize;
+                    let align = field.align(structs, path, span) as usize;
                     total += ((align - (offset % align)) % align) as u32;
                 }
                 total
             },
-        }
+        })
     }
 
     pub fn physical_size(&self) -> u32 {
@@ -117,17 +122,17 @@ impl Type {
         }
     }
 
-    pub fn align(&self, structs: &HashMap<StructID, StructData>) -> u8 {
+    pub fn align(&self, structs: &HashMap<StructID, StructData>, path: &str, span: Span) -> u8 {
         match self {
-            Self::Array(inner, _) => inner.align(structs),
+            Self::Array(inner, _) => inner.align(structs, path, span),
             Self::Struct(id, _) => {
                 let data = &structs[id];
                 data.fields.iter()
-                    .map(|(_, ty)| ty.align(structs))
+                    .map(|(_, ty, _)| ty.align(structs, path, span))
                     .max()
                     .unwrap_or(1)
             },
-            _ => self.size(structs) as u8,
+            _ => self.size(structs, path, span).unwrap() as u8,
         }
     }
 }

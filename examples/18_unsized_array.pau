@@ -1,0 +1,6 @@
+/: this should error
+def main(): int
+    let unsized_array: [int];
+
+    0
+end
