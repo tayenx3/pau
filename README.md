@@ -34,9 +34,9 @@ Check out [the Guide](docs/guide.md)
 Pau currently supports the following targets via Cranelift:
 | Arch            | OS      | Target         |
 | --------------- | ------- | -------------- |
-| x86-64          | Linux   | x86-64-linux   |
-| x86-64          | Windows | x86-64-windows |
-| x86-64          | macOS   | x86-64-darwin  |
+| x86-64          | Linux   | x86_64-linux   |
+| x86-64          | Windows | x86_64-windows |
+| x86-64          | macOS   | x86_64-darwin  |
 | AArch64/ARM64   | Linux   | aarch64-linux  |
 | AArch64/ARM64   | macOS   | aarch64-darwin |
 | RISC-V (64-bit) | Linux   | riscv64-linux  |
